@@ -234,9 +234,8 @@ if modo_carga == "📷 Escanear Ticket (IA)":
       if st.sidebar.button("Analizar con IA"):
         with st.spinner("Procesando imagen con IA..."):
           response = None
-          error_msg = ""
-          # Usamos el modelo oficial actual: gemini-3.8-flash
-          for intento in range(1, 4):
+          error_encontrado = False
+          for intento in range(1, 3):
             try:
               image_bytes = foto_subida.getvalue()
               response = client_gemini.models.generate_content(
@@ -257,8 +256,8 @@ if modo_carga == "📷 Escanear Ticket (IA)":
               )
               break
             except Exception as e:
-              error_msg = str(e)
-              time.sleep(1.5)
+              error_encontrado = str(e)
+              time.sleep(1)
 
           if response and response.text:
             try:
@@ -276,12 +275,17 @@ if modo_carga == "📷 Escanear Ticket (IA)":
               )
               st.sidebar.success("¡Comprobante leído con éxito!")
               st.rerun()
-            except Exception as parse_err:
-              st.sidebar.error(f"Error procesando el formato: {parse_err}")
+            except Exception:
+              st.sidebar.warning(
+                  "⚠️ No se pudo interpretar la respuesta exacta del ticket."
+                  " Por favor, completa los datos de forma manual."
+              )
           else:
-            st.sidebar.error(
-                "No se pudo procesar el comprobante debido a congestión"
-                f" temporal. Detalle: {error_msg}"
+            # Manejo limpio y amigable del error 503 o saturación
+            st.sidebar.warning(
+                "⚠️ Los servidores de IA están experimentando alta demanda en"
+                " este momento. Te invitamos a completar los datos de forma"
+                " manual abajo."
             )
 
 tipo = st.sidebar.selectbox("Tipo", ["Gasto", "Ingreso"])
