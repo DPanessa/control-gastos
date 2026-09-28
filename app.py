@@ -232,36 +232,30 @@ if modo_carga == "📷 Escanear Ticket (IA)":
           foto_subida, caption="Ticket subido", use_container_width=True
       )
       if st.sidebar.button("Analizar con IA"):
-        with st.spinner("Leyendo comprobante a máxima velocidad..."):
-          response = None
-          error_msg = ""
-          # Usamos el modelo ultra rápido y estable gemini-3.8-flash con reintentos
-          for intento in range(1, 4):
-            try:
-              image_bytes = foto_subida.getvalue()
-              response = client_gemini.models.generate_content(
-                  model="gemini-3.8-flash",
-                  contents=[
-                      types.Part.from_bytes(
-                          data=image_bytes, mime_type=foto_subida.type
-                      ),
-                      (
-                          "Analiza este comprobante de gasto o pago y extrae en"
-                          " formato estricto JSON lo siguiente: "
-                          '{"monto": 0.0, "descripcion": "comercio o detalle",'
-                          ' "tipo": "Gasto"} (si es ingreso pon Ingreso, sino'
-                          " Gasto). Solo devuelve el JSON sin formato markdown"
-                          " extra."
-                      ),
-                  ],
-              )
-              break
-            except Exception as e:
-              error_msg = str(e)
-              time.sleep(1.5)
+        with st.spinner(
+            "Procesando imagen con IA (modelo de alta velocidad)..."
+        ):
+          try:
+            image_bytes = foto_subida.getvalue()
+            # Usamos gemini-3.5-flash-lite para respuesta ultra veloz y sin demoras
+            response = client_gemini.models.generate_content(
+                model="gemini-3.5-flash-lite",
+                contents=[
+                    types.Part.from_bytes(
+                        data=image_bytes, mime_type=foto_subida.type
+                    ),
+                    (
+                        "Analiza este comprobante de gasto o pago y extrae en"
+                        " formato estricto JSON lo siguiente: "
+                        '{"monto": 0.0, "descripcion": "comercio o detalle",'
+                        ' "tipo": "Gasto"} (si es ingreso pon Ingreso, sino'
+                        " Gasto). Solo devuelve el JSON sin formato markdown"
+                        " extra."
+                    ),
+                ],
+            )
 
-          if response:
-            try:
+            if response and response.text:
               backticks = chr(96) * 3
               texto_limpio = (
                   response.text.replace(backticks + "json", "")
@@ -276,12 +270,12 @@ if modo_carga == "📷 Escanear Ticket (IA)":
               )
               st.sidebar.success("¡Comprobante leído con éxito!")
               st.rerun()
-            except Exception as parse_err:
-              st.sidebar.error(f"Error procesando el formato: {parse_err}")
-          else:
+            else:
+              st.sidebar.error("La IA no devolvió ninguna respuesta.")
+          except Exception as e:
             st.sidebar.error(
-                "No se pudo conectar con el servicio de IA en este instante."
-                f" Detalle: {error_msg}"
+                "Error al procesar la imagen con la IA. Asegúrate de que la"
+                f" foto sea clara. Detalle: {e}"
             )
 
 tipo = st.sidebar.selectbox("Tipo", ["Gasto", "Ingreso"])
