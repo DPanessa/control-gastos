@@ -232,14 +232,17 @@ if modo_carga == "📷 Escanear Ticket (IA)":
           foto_subida, caption="Ticket subido", use_container_width=True
       )
       if st.sidebar.button("Analizar con IA"):
-        with st.spinner("Leyendo comprobante con IA..."):
+        with st.spinner(
+            "Leyendo comprobante (reintentando si hay alta demanda)..."
+        ):
           response = None
           error_msg = ""
-          for intento in range(3):
+          # Realizamos hasta 5 intentos automáticos con intervalos si da error 503
+          for intento in range(1, 6):
             try:
               image_bytes = foto_subida.getvalue()
               response = client_gemini.models.generate_content(
-                  model="gemini-3.8-flash",
+                  model="gemini-3.5-flash",
                   contents=[
                       types.Part.from_bytes(
                           data=image_bytes, mime_type=foto_subida.type
@@ -254,10 +257,12 @@ if modo_carga == "📷 Escanear Ticket (IA)":
                       ),
                   ],
               )
-              break
+              break  # Si la respuesta es exitosa, salimos del ciclo de reintentos
             except Exception as e:
               error_msg = str(e)
-              time.sleep(2)
+              time.sleep(
+                  3 * intento
+              )  # Espera progresiva (3s, 6s, 9s...) antes del siguiente intento
 
           if response:
             try:
@@ -276,9 +281,12 @@ if modo_carga == "📷 Escanear Ticket (IA)":
               st.sidebar.success("¡Comprobante leído con éxito!")
               st.rerun()
             except Exception as parse_err:
-              st.sidebar.error(f"Error procesando la respuesta: {parse_err}")
+              st.sidebar.error(f"Error procesando el formato: {parse_err}")
           else:
-            st.sidebar.error(f"Error al conectar con la IA: {error_msg}")
+            st.sidebar.error(
+                "Los servidores están experimentando congestión prolongada."
+                f" Por favor intenta de nuevo en un momento. Detalle: {error_msg}"
+            )
 
 tipo = st.sidebar.selectbox("Tipo", ["Gasto", "Ingreso"])
 cuenta = st.sidebar.selectbox(
