@@ -416,21 +416,41 @@ if not df_transacciones.empty:
       st.info("No hay gastos registrados todavía.")
 
   with col_g2:
-    st.subheader("Comparación de Ingresos y Gastos")
-    total_ingresos = df_transacciones[df_transacciones["Tipo"] == "Ingreso"][
-        "Monto"
-    ].sum()
-    total_gastos = df_transacciones[df_transacciones["Tipo"] == "Gasto"][
-        "Monto"
-    ].sum()
-    fig_ing_gas = px.bar(
-        x=["Ingresos", "Gastos"],
-        y=[total_ingresos, total_gastos],
-        color=["Ingresos", "Gastos"],
-        color_discrete_map={"Ingresos": "#2ecc71", "Gastos": "#e74c3c"},
-        labels={"x": "Concepto", "y": "Monto ($)"},
+    st.subheader("Análisis Financiero")
+
+    # Selector claro y directo para alternar los gráficos
+    tipo_grafico = st.radio(
+        "Elige qué gráfico mostrar:",
+        [
+            "📊 Comparación Ingresos / Gastos",
+            "💳 Distribución de Cuentas (Físico vs Digital)",
+        ],
+        key="selector_grafico_fin",
     )
-    st.plotly_chart(fig_ing_gas, use_container_width=True)
+
+    if tipo_grafico == "📊 Comparación Ingresos / Gastos":
+      total_ingresos = df_transacciones[df_transacciones["Tipo"] == "Ingreso"][
+          "Monto"
+      ].sum()
+      total_gastos = df_transacciones[df_transacciones["Tipo"] == "Gasto"][
+          "Monto"
+      ].sum()
+      fig_ing_gas = px.bar(
+          x=["Ingresos", "Gastos"],
+          y=[total_ingresos, total_gastos],
+          color=["Ingresos", "Gastos"],
+          color_discrete_map={"Ingresos": "#2ecc71", "Gastos": "#e74c3c"},
+          labels={"x": "Concepto", "y": "Monto ($)"},
+      )
+      st.plotly_chart(fig_ing_gas, use_container_width=True)
+    else:
+      fig_cuentas = px.bar(
+          x=["Físico", "Digital / Bancario"],
+          y=[balance_fisico, balance_bancario],
+          color=["Físico", "Digital / Bancario"],
+          labels={"x": "Cuenta", "y": "Monto ($)"},
+      )
+      st.plotly_chart(fig_cuentas, use_container_width=True)
 
   st.subheader("Historial de tus Movimientos")
   df_mostrar = df_transacciones.sort_values(by="Fecha", ascending=False).copy()
