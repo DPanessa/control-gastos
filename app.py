@@ -234,7 +234,6 @@ if modo_carga == "📷 Escanear Ticket (IA)":
       if st.sidebar.button("Analizar con IA"):
         with st.spinner("Procesando imagen con IA..."):
           response = None
-          error_encontrado = False
           for intento in range(1, 3):
             try:
               image_bytes = foto_subida.getvalue()
@@ -255,8 +254,7 @@ if modo_carga == "📷 Escanear Ticket (IA)":
                   ],
               )
               break
-            except Exception as e:
-              error_encontrado = str(e)
+            except Exception:
               time.sleep(1)
 
           if response and response.text:
@@ -278,20 +276,41 @@ if modo_carga == "📷 Escanear Ticket (IA)":
             except Exception:
               st.sidebar.warning(
                   "⚠️ No se pudo interpretar la respuesta exacta del ticket."
-                  " Por favor, completa los datos de forma manual."
+                  " Completa los datos manualmente."
               )
           else:
-            # Manejo limpio y amigable del error 503 o saturación
             st.sidebar.warning(
-                "⚠️ Los servidores de IA están experimentando alta demanda en"
-                " este momento. Te invitamos a completar los datos de forma"
-                " manual abajo."
+                "⚠️ Los servidores de IA están ocupados temporalmente. Completa"
+                " los datos de forma manual."
             )
 
 tipo = st.sidebar.selectbox("Tipo", ["Gasto", "Ingreso"])
-cuenta = st.sidebar.selectbox(
-    "Tipo de Dinero", ["Físico (Efectivo)", "Bancario (Digital)"]
+
+# Selector dinámico de tipo de dinero (Físico o Banco/Billetera específica)
+tipo_dinero = st.sidebar.selectbox(
+    "Tipo de Dinero", ["Físico (Efectivo)", "Bancario / Digital"]
 )
+if tipo_dinero == "Bancario / Digital":
+  banco_seleccionado = st.sidebar.selectbox(
+      "Banco o Billetera Virtual",
+      [
+          "Mercado Pago",
+          "Lemon Cash",
+          "BBVA",
+          "Banco Galicia",
+          "PayPal",
+          "Otro (Personalizado)",
+      ],
+  )
+  if banco_seleccionado == "Otro (Personalizado)":
+    banco_seleccionado = st.sidebar.text_input(
+        "Nombre del banco / billetera"
+    ).strip()
+    if not banco_seleccionado:
+      banco_seleccionado = "Digital"
+  cuenta = f"Digital: {banco_seleccionado}"
+else:
+  cuenta = "Físico (Efectivo)"
 
 lista_categorias = obtener_categorias(
     st.session_state.usuario_actual, tipo
@@ -347,21 +366,29 @@ if st.sidebar.button("Registrar Movimiento"):
 # --- DASHBOARD Y MÉTRICAS ---
 if not df_transacciones.empty:
 
-  def calcular_balance_cuenta(nombre_cuenta):
-    df_c = df_transacciones[df_transacciones["Cuenta"] == nombre_cuenta]
+  def calcular_balance_cuenta(tipo_base):
+    if tipo_base == "Físico (Efectivo)":
+      df_c = df_transacciones[
+          df_transacciones["Cuenta"] == "Físico (Efectivo)"
+      ]
+    else:
+      df_c = df_transacciones[
+          df_transacciones["Cuenta"].str.startswith("Digital:")
+          | (df_transacciones["Cuenta"] == "Bancario (Digital)")
+      ]
     ing = df_c[df_c["Tipo"] == "Ingreso"]["Monto"].sum()
     gas = df_c[df_c["Tipo"] == "Gasto"]["Monto"].sum()
     return ing - gas
 
 
   balance_fisico = calcular_balance_cuenta("Físico (Efectivo)")
-  balance_bancario = calcular_balance_cuenta("Bancario (Digital)")
+  balance_bancario = calcular_balance_cuenta("Bancario / Digital")
   balance_total = balance_fisico + balance_bancario
 
   st.subheader("📊 Estado de tus Cuentas")
   col1, col2, col3 = st.columns(3)
   col1.metric("💵 Dinero Físico", f"${balance_fisico:,.2f}")
-  col2.metric("💳 Dinero Bancario", f"${balance_bancario:,.2f}")
+  col2.metric("💳 Dinero Digital / Bancario", f"${balance_bancario:,.2f}")
   col3.metric(
       "💰 Patrimonio Total",
       f"${balance_total:,.2f}",
@@ -389,19 +416,34 @@ if not df_transacciones.empty:
       st.info("No hay gastos registrados todavía.")
 
   with col_g2:
-    st.subheader("Distribución de Dinero")
-    fig_cuentas = px.bar(
-        x=["Físico", "Bancario"],
-        y=[balance_fisico, balance_bancario],
-        color=["Físico", "Bancario"],
-        labels={"x": "Cuenta", "y": "Monto ($)"},
+    st.subheader("Comparación de Ingresos y Gastos")
+    total_ingresos = df_transacciones[df_transacciones["Tipo"] == "Ingreso"][
+        "Monto"
+    ].sum()
+    total_gastos = df_transacciones[df_transacciones["Tipo"] == "Gasto"][
+        "Monto"
+    ].sum()
+    fig_ing_gas = px.bar(
+        x=["Ingresos", "Gastos"],
+        y=[total_ingresos, total_gastos],
+        color=["Ingresos", "Gastos"],
+        color_discrete_map={"Ingresos": "#2ecc71", "Gastos": "#e74c3c"},
+        labels={"x": "Concepto", "y": "Monto ($)"},
     )
-    st.plotly_chart(fig_cuentas, use_container_width=True)
+    st.plotly_chart(fig_ing_gas, use_container_width=True)
 
   st.subheader("Historial de tus Movimientos")
   df_mostrar = df_transacciones.sort_values(by="Fecha", ascending=False).copy()
   df_mostrar["Fecha"] = df_mostrar["Fecha"].dt.strftime("%Y-%m-%d")
-  st.dataframe(df_mostrar.drop(columns=["Usuario"]), use_container_width=True)
+
+  # Reordenar columnas para que la Fecha quede al final
+  columnas_orden = ["Tipo", "Cuenta", "Categoría", "Monto", "Nota", "Fecha"]
+  columnas_disponibles = [c for c in columnas_orden if c in df_mostrar.columns]
+
+  st.dataframe(
+      df_mostrar[columnas_disponibles],
+      use_container_width=True,
+  )
 
   if st.button("Borrar mi último registro agregado"):
     idx_usuario = df_global[
