@@ -235,12 +235,12 @@ if modo_carga == "📷 Escanear Ticket (IA)":
         with st.spinner("Procesando imagen con IA..."):
           response = None
           error_msg = ""
-          # Usamos el modelo oficial actual: gemini-2.5-flash
+          # Usamos el modelo oficial actual: gemini-3.8-flash
           for intento in range(1, 4):
             try:
               image_bytes = foto_subida.getvalue()
               response = client_gemini.models.generate_content(
-                  model="gemini-2.5-flash",
+                  model="gemini-3.8-flash",
                   contents=[
                       types.Part.from_bytes(
                           data=image_bytes, mime_type=foto_subida.type
