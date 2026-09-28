@@ -232,17 +232,14 @@ if modo_carga == "📷 Escanear Ticket (IA)":
           foto_subida, caption="Ticket subido", use_container_width=True
       )
       if st.sidebar.button("Analizar con IA"):
-        with st.spinner(
-            "Leyendo comprobante (esto puede tomar unos segundos)..."
-        ):
+        with st.spinner("Leyendo comprobante con IA..."):
           response = None
           error_msg = ""
-          # Intentamos con modelo 2.5-flash y reintentos automáticos si hay saturación temporal
           for intento in range(3):
             try:
               image_bytes = foto_subida.getvalue()
               response = client_gemini.models.generate_content(
-                  model="gemini-2.5-flash",
+                  model="gemini-3.8-flash",
                   contents=[
                       types.Part.from_bytes(
                           data=image_bytes, mime_type=foto_subida.type
@@ -257,12 +254,10 @@ if modo_carga == "📷 Escanear Ticket (IA)":
                       ),
                   ],
               )
-              break  # Si sale bien, rompemos el ciclo
+              break
             except Exception as e:
               error_msg = str(e)
-              time.sleep(
-                  2
-              )  # Espera 2 segundos antes de reintentar si da error 503
+              time.sleep(2)
 
           if response:
             try:
@@ -281,15 +276,9 @@ if modo_carga == "📷 Escanear Ticket (IA)":
               st.sidebar.success("¡Comprobante leído con éxito!")
               st.rerun()
             except Exception as parse_err:
-              st.sidebar.error(
-                  f"La IA respondió pero hubo un error procesando el formato:"
-                  f" {parse_err}"
-              )
+              st.sidebar.error(f"Error procesando la respuesta: {parse_err}")
           else:
-            st.sidebar.error(
-                "Los servidores de IA están ocupados temporalmente. Por favor"
-                f" intenta de nuevo en unos segundos. Detalle: {error_msg}"
-            )
+            st.sidebar.error(f"Error al conectar con la IA: {error_msg}")
 
 tipo = st.sidebar.selectbox("Tipo", ["Gasto", "Ingreso"])
 cuenta = st.sidebar.selectbox(
