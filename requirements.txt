@@ -2,3 +2,4 @@ streamlit
 pandas
 plotly
 extra-streamlit-components
+google-genai
