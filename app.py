@@ -235,12 +235,12 @@ if modo_carga == "📷 Escanear Ticket (IA)":
         with st.spinner("Procesando imagen con IA..."):
           response = None
           error_msg = ""
-          # Reintentos automáticos usando gemini-1.5-flash (modelo sumamente estable)
+          # Usamos el modelo oficial actual: gemini-2.5-flash
           for intento in range(1, 4):
             try:
               image_bytes = foto_subida.getvalue()
               response = client_gemini.models.generate_content(
-                  model="gemini-1.5-flash",
+                  model="gemini-2.5-flash",
                   contents=[
                       types.Part.from_bytes(
                           data=image_bytes, mime_type=foto_subida.type
@@ -258,7 +258,7 @@ if modo_carga == "📷 Escanear Ticket (IA)":
               break
             except Exception as e:
               error_msg = str(e)
-              time.sleep(1)
+              time.sleep(1.5)
 
           if response and response.text:
             try:
