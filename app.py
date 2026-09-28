@@ -232,17 +232,15 @@ if modo_carga == "📷 Escanear Ticket (IA)":
           foto_subida, caption="Ticket subido", use_container_width=True
       )
       if st.sidebar.button("Analizar con IA"):
-        with st.spinner(
-            "Leyendo comprobante (reintentando si hay alta demanda)..."
-        ):
+        with st.spinner("Leyendo comprobante a máxima velocidad..."):
           response = None
           error_msg = ""
-          # Realizamos hasta 5 intentos automáticos con intervalos si da error 503
-          for intento in range(1, 6):
+          # Usamos el modelo ultra rápido y estable gemini-3.8-flash con reintentos
+          for intento in range(1, 4):
             try:
               image_bytes = foto_subida.getvalue()
               response = client_gemini.models.generate_content(
-                  model="gemini-3.5-flash",
+                  model="gemini-3.8-flash",
                   contents=[
                       types.Part.from_bytes(
                           data=image_bytes, mime_type=foto_subida.type
@@ -257,12 +255,10 @@ if modo_carga == "📷 Escanear Ticket (IA)":
                       ),
                   ],
               )
-              break  # Si la respuesta es exitosa, salimos del ciclo de reintentos
+              break
             except Exception as e:
               error_msg = str(e)
-              time.sleep(
-                  3 * intento
-              )  # Espera progresiva (3s, 6s, 9s...) antes del siguiente intento
+              time.sleep(1.5)
 
           if response:
             try:
@@ -284,8 +280,8 @@ if modo_carga == "📷 Escanear Ticket (IA)":
               st.sidebar.error(f"Error procesando el formato: {parse_err}")
           else:
             st.sidebar.error(
-                "Los servidores están experimentando congestión prolongada."
-                f" Por favor intenta de nuevo en un momento. Detalle: {error_msg}"
+                "No se pudo conectar con el servicio de IA en este instante."
+                f" Detalle: {error_msg}"
             )
 
 tipo = st.sidebar.selectbox("Tipo", ["Gasto", "Ingreso"])
