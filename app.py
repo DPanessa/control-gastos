@@ -453,15 +453,11 @@ default_nota = st.session_state.pop("ocr_nota", "")
 monto = st.sidebar.number_input(
     "Monto ($)", min_value=0.0, step=100.0, value=default_monto
 )
-
-# Selección visible de la fecha en el formulario
 fecha_usuario = st.sidebar.date_input("Fecha", datetime.today())
-
 nota = st.sidebar.text_input("Nota / Descripción", value=default_nota)
 
 if st.sidebar.button("Registrar Movimiento"):
   if monto > 0:
-    # Combinamos la fecha elegida por el usuario con la hora exacta actual del sistema por detrás
     hora_actual = datetime.now().time()
     fecha_hora_combinada = datetime.combine(fecha_usuario, hora_actual)
 
@@ -609,13 +605,19 @@ if not df_transacciones.empty:
   )
 
   if st.button("Borrar mi último registro agregado"):
-    idx_usuario = df_global[
+    # Buscamos en el df_global las filas que pertenecen estrictamente al usuario actual
+    indices_usuario = df_global[
         df_global["Usuario"] == st.session_state.usuario_actual
     ].index
-    if not idx_usuario.empty:
-      df_global = df_global.drop(idx_usuario[-1])
+    if not indices_usuario.empty:
+      # Eliminamos la última posición correspondiente a este usuario del df_global entero
+      ultimo_idx = indices_usuario[-1]
+      df_global = df_global.drop(ultimo_idx)
       guardar_datos(df_global)
+      st.success("¡Último registro borrado con éxito!")
       st.rerun()
+    else:
+      st.warning("No hay registros tuyos para borrar.")
 
 else:
   st.info(
@@ -623,7 +625,7 @@ else:
       " registrar tus ingresos y gastos."
   )
 
-# --- PANEL DE LOGS PARA ADMIN (Visible automáticamente si eres admin) ---
+# --- PANEL DE LOGS PARA ADMIN ---
 if es_superusuario:
   st.divider()
   st.subheader("🕵️‍♂️ Registro de Accesos y Auditoría (Admin)")
