@@ -605,19 +605,19 @@ if not df_transacciones.empty:
   )
 
   if st.button("Borrar mi último registro agregado"):
-    # Buscamos en el df_global las filas que pertenecen estrictamente al usuario actual
-    indices_usuario = df_global[
-        df_global["Usuario"] == st.session_state.usuario_actual
+    # Recargamos el archivo directamente de disco para asegurar sincronía total
+    df_fresco = cargar_datos()
+    indices_usuario = df_fresco[
+        df_fresco["Usuario"] == st.session_state.usuario_actual
     ].index
     if not indices_usuario.empty:
-      # Eliminamos la última posición correspondiente a este usuario del df_global entero
       ultimo_idx = indices_usuario[-1]
-      df_global = df_global.drop(ultimo_idx)
-      guardar_datos(df_global)
-      st.success("¡Último registro borrado con éxito!")
+      df_fresco = df_fresco.drop(ultimo_idx)
+      guardar_datos(df_fresco)
+      st.success("¡Último registro borrado del sistema con éxito!")
       st.rerun()
     else:
-      st.warning("No hay registros tuyos para borrar.")
+      st.warning("No hay registros tuyos para borrar en el archivo.")
 
 else:
   st.info(
