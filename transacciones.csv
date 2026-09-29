@@ -1,2 +1,2 @@
-Fecha,Tipo,Categoría,Monto,Nota,Usuario,Cuenta
-
+Usuario,Fecha,Tipo,Cuenta,Categoría,Monto,Nota
+dpanessa,2026-09-29 01:00:23,Ingreso,Físico (Efectivo),Otros,36000.0,-
