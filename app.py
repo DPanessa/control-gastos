@@ -80,7 +80,7 @@ def cargar_login_log():
 def registrar_login_log(usuario, ip, accion):
   df_log = cargar_login_log()
   ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-  
+
   if accion == "Login":
     nuevo = pd.DataFrame(
         {
@@ -95,14 +95,13 @@ def registrar_login_log(usuario, ip, accion):
     else:
       df_log = pd.concat([df_log, nuevo], ignore_index=True)
   else:
-    # Buscar el último registro de este usuario que no tenga fecha de desconexión
     idx = df_log[
         (df_log["Usuario"] == str(usuario))
         & ((df_log["Desconexion"].isna()) | (df_log["Desconexion"] == ""))
     ].index
     if not idx.empty:
       df_log.loc[idx[-1], "Desconexion"] = str(ahora)
-      
+
   df_log.to_csv(LOGIN_LOG_FILE, index=False)
 
 
@@ -122,13 +121,15 @@ def guardar_usuario(usuario, password):
   df_users = cargar_usuarios()
   if not df_users.empty and usuario in df_users["Usuario"].values:
     return False
-  nuevo_u = pd.DataFrame({"Usuario": [str(usuario)], "Password": [str(password)]})
-  
+  nuevo_u = pd.DataFrame(
+      {"Usuario": [str(usuario)], "Password": [str(password)]}
+  )
+
   if df_users.empty:
     df_users = nuevo_u
   else:
     df_users = pd.concat([df_users, nuevo_u], ignore_index=True)
-    
+
   df_users.to_csv(USERS_FILE, index=False)
   return True
 
@@ -138,7 +139,8 @@ def validar_usuario(usuario, password):
   if df_users.empty:
     return False
   match = df_users[
-      (df_users["Usuario"] == str(usuario)) & (df_users["Password"] == str(password))
+      (df_users["Usuario"] == str(usuario))
+      & (df_users["Password"] == str(password))
   ]
   return not match.empty
 
@@ -232,14 +234,18 @@ def guardar_categoria_custom(usuario, tipo, categoria):
     return False
 
   nueva = pd.DataFrame(
-      {"Usuario": [str(usuario)], "Tipo": [str(tipo)], "Categoria": [str(categoria)]}
+      {
+          "Usuario": [str(usuario)],
+          "Tipo": [str(tipo)],
+          "Categoria": [str(categoria)],
+      }
   )
-  
+
   if df_cat.empty:
     df_cat = nueva
   else:
     df_cat = pd.concat([df_cat, nueva], ignore_index=True)
-    
+
   df_cat.to_csv(CATEGORIES_FILE, index=False)
   return True
 
@@ -447,14 +453,18 @@ default_nota = st.session_state.pop("ocr_nota", "")
 monto = st.sidebar.number_input(
     "Monto ($)", min_value=0.0, step=100.0, value=default_monto
 )
-fecha_input = st.sidebar.date_input("Fecha", datetime.today())
-hora_input = st.sidebar.time_input("Hora", datetime.now().time())
-fecha_hora_combinada = datetime.combine(fecha_input, hora_input)
+
+# Selección visible de la fecha en el formulario
+fecha_usuario = st.sidebar.date_input("Fecha", datetime.today())
 
 nota = st.sidebar.text_input("Nota / Descripción", value=default_nota)
 
 if st.sidebar.button("Registrar Movimiento"):
   if monto > 0:
+    # Combinamos la fecha elegida por el usuario con la hora exacta actual del sistema por detrás
+    hora_actual = datetime.now().time()
+    fecha_hora_combinada = datetime.combine(fecha_usuario, hora_actual)
+
     nueva_fila = pd.DataFrame(
         {
             "Usuario": [st.session_state.usuario_actual],
@@ -470,7 +480,7 @@ if st.sidebar.button("Registrar Movimiento"):
       df_global = nueva_fila
     else:
       df_global = pd.concat([df_global, nueva_fila], ignore_index=True)
-      
+
     guardar_datos(df_global)
     st.sidebar.success("¡Movimiento guardado con éxito!")
     st.rerun()
@@ -613,16 +623,16 @@ else:
       " registrar tus ingresos y gastos."
   )
 
-# --- PANEL DE LOGS PARA ADMIN ---
-if es_superusuario and ver_modo_global:
+# --- PANEL DE LOGS PARA ADMIN (Visible automáticamente si eres admin) ---
+if es_superusuario:
   st.divider()
-  st.subheader("🕵️‍♂️ Registro de Accesos (Auditoría)")
+  st.subheader("🕵️‍♂️ Registro de Accesos y Auditoría (Admin)")
   df_logs = cargar_login_log()
   if not df_logs.empty:
     st.dataframe(df_logs, use_container_width=True)
     csv_logs = df_logs.to_csv(index=False).encode("utf-8")
     st.download_button(
-        label="📥 Descargar Logs",
+        label="📥 Descargar Logs de Conexión",
         data=csv_logs,
         file_name="login_log.csv",
         mime="text/csv",
