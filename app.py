@@ -19,6 +19,7 @@ USERS_FILE = "usuarios.csv"
 DATA_FILE = "transacciones.csv"
 CATEGORIES_FILE = "categorias.csv"
 SESSION_FILE = "sesion_activa.txt"
+LOGIN_LOG_FILE = "login_log.csv"
 
 # Categorías por defecto base
 DEFAULT_GASTOS = [
@@ -46,6 +47,57 @@ def obtener_cliente_gemini():
   if api_key:
     return genai.Client(api_key=api_key)
   return None
+
+
+# --- OBTENER IP DEL CLIENTE ---
+def obtener_ip_cliente():
+  try:
+    headers = st.context.headers
+    ip = (
+        headers.get("X-Forwarded-For", "").split(",")[0]
+        or headers.get("X-Real-Ip", "")
+        or "127.0.0.1"
+    )
+    return ip.strip()
+  except Exception:
+    return "127.0.0.1"
+
+
+# --- FUNCIONES DE REGISTRO DE LOGIN / LOGOUT ---
+def cargar_login_log():
+  if not os.path.exists(LOGIN_LOG_FILE):
+    df_init = pd.DataFrame(
+        columns=["Usuario", "IP", "Conexion", "Desconexion"]
+    )
+    df_init.to_csv(LOGIN_LOG_FILE, index=False)
+    return df_init
+  try:
+    return pd.read_csv(LOGIN_LOG_FILE)
+  except Exception:
+    return pd.DataFrame(columns=["Usuario", "IP", "Conexion", "Desconexion"])
+
+
+def registrar_login_log(usuario, ip, accion):
+  df_log = cargar_login_log()
+  ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  if accion == "Login":
+    nuevo = pd.DataFrame(
+        {
+            "Usuario": [usuario],
+            "IP": [ip],
+            "Conexion": [ahora],
+            "Desconexion": [""],
+        }
+    )
+    df_log = pd.concat([df_log, nuevo], ignore_index=True)
+  else:
+    idx = df_log[
+        (df_log["Usuario"] == usuario)
+        & (df_log["Desconexion"].isna() | (df_log["Desconexion"] == ""))
+    ].index
+    if not idx.empty:
+      df_log.loc[idx[-1], "Desconexion"] = ahora
+  df_log.to_csv(LOGIN_LOG_FILE, index=False)
 
 
 # --- FUNCIONES DE USUARIOS Y SESIÓN LOCAL ---
@@ -83,16 +135,22 @@ def validar_usuario(usuario, password):
 def leer_sesion_local():
   if os.path.exists(SESSION_FILE):
     with open(SESSION_FILE, "r") as f:
-      return f.read().strip()
+      contenido = f.read().strip()
+      # Formato esperado: USUARIO|IP
+      if "|" in contenido:
+        return contenido.split("|")[0]
+      return contenido
   return None
 
 
-def guardar_sesion_local(usuario):
+def guardar_sesion_local(usuario, ip):
   with open(SESSION_FILE, "w") as f:
-    f.write(usuario)
+    f.write(f"{usuario}|{ip}")
 
 
-def borrar_sesion_local():
+def borrar_sesion_local(usuario):
+  if usuario:
+    registrar_login_log(usuario, obtener_ip_cliente(), "Logout")
   if os.path.exists(SESSION_FILE):
     os.remove(SESSION_FILE)
 
@@ -111,8 +169,10 @@ if not st.session_state.usuario_actual:
     pass_in = st.text_input("Contraseña", type="password", key="login_pass")
     if st.button("Entrar"):
       if validar_usuario(user_in, pass_in):
+        ip_actual = obtener_ip_cliente()
         st.session_state.usuario_actual = user_in
-        guardar_sesion_local(user_in)
+        guardar_sesion_local(user_in, ip_actual)
+        registrar_login_log(user_in, ip_actual, "Login")
         st.rerun()
       else:
         st.error("Usuario o contraseña incorrectos.")
@@ -125,7 +185,8 @@ if not st.session_state.usuario_actual:
       if user_reg and pass_reg:
         if guardar_usuario(user_reg, pass_reg):
           st.success(
-              "¡Cuenta creada con éxito! Ahora ve a la pestaña 'Iniciar Sesión'."
+              "¡Cuenta creada con éxito! (Si creaste 'admin', tendrás privilegios"
+              " de superusuario). Ve a la pestaña 'Iniciar Sesión'."
           )
         else:
           st.error("El nombre de usuario ya está en uso.")
@@ -206,9 +267,26 @@ def guardar_datos(df):
 
 
 df_global = cargar_datos()
-df_transacciones = df_global[
-    df_global["Usuario"] == st.session_state.usuario_actual
-].copy()
+
+# Gestión de Superusuario
+es_superusuario = st.session_state.usuario_actual.lower() == "admin"
+ver_modo_global = False
+
+if es_superusuario:
+  st.sidebar.warning("🛡️ Modo Superusuario Activo")
+  ver_modo_global = st.sidebar.checkbox(
+      "Ver datos globales (todos los usuarios)", value=False
+  )
+  if ver_modo_global:
+    df_transacciones = df_global.copy()
+  else:
+    df_transacciones = df_global[
+        df_global["Usuario"] == st.session_state.usuario_actual
+    ].copy()
+else:
+  df_transacciones = df_global[
+      df_global["Usuario"] == st.session_state.usuario_actual
+    ].copy()
 
 # --- PANEL PRINCIPAL DE LA APP ---
 st.title(f"💸 Finanzas de: {st.session_state.usuario_actual}")
@@ -218,8 +296,9 @@ st.markdown(
 )
 
 if st.sidebar.button("Cerrar Sesión"):
+  usuario_saliendo = st.session_state.usuario_actual
   st.session_state.usuario_actual = None
-  borrar_sesion_local()
+  borrar_sesion_local(usuario_saliendo)
   st.rerun()
 
 st.sidebar.divider()
@@ -300,7 +379,6 @@ if modo_carga == "📷 Escanear Ticket (IA)":
 
 tipo = st.sidebar.selectbox("Tipo", ["Gasto", "Ingreso"])
 
-# Selector dinámico de tipo de dinero (Físico o Banco/Billetera específica)
 tipo_dinero = st.sidebar.selectbox(
     "Tipo de Dinero", ["Físico (Efectivo)", "Bancario / Digital"]
 )
@@ -354,7 +432,10 @@ default_nota = st.session_state.pop("ocr_nota", "")
 monto = st.sidebar.number_input(
     "Monto ($)", min_value=0.0, step=100.0, value=default_monto
 )
-fecha = st.sidebar.date_input("Fecha", datetime.today())
+fecha_input = st.sidebar.date_input("Fecha", datetime.today())
+hora_input = st.sidebar.time_input("Hora", datetime.now().time())
+fecha_hora_combinada = datetime.combine(fecha_input, hora_input)
+
 nota = st.sidebar.text_input("Nota / Descripción", value=default_nota)
 
 if st.sidebar.button("Registrar Movimiento"):
@@ -362,7 +443,7 @@ if st.sidebar.button("Registrar Movimiento"):
     nueva_fila = pd.DataFrame(
         {
             "Usuario": [st.session_state.usuario_actual],
-            "Fecha": [pd.to_datetime(fecha)],
+            "Fecha": [pd.to_datetime(fecha_hora_combinada)],
             "Tipo": [tipo],
             "Cuenta": [cuenta],
             "Categoría": [categoria],
@@ -476,9 +557,21 @@ if not df_transacciones.empty:
 
   st.subheader("Historial de tus Movimientos")
   df_mostrar = df_transacciones.sort_values(by="Fecha", ascending=False).copy()
-  df_mostrar["Fecha"] = df_mostrar["Fecha"].dt.strftime("%Y-%m-%d")
+  df_mostrar["Fecha"] = df_mostrar["Fecha"].dt.strftime("%Y-%m-%d %H:%M:%S")
 
-  columnas_orden = ["Tipo", "Cuenta", "Categoría", "Monto", "Nota", "Fecha"]
+  if es_superusuario and ver_modo_global:
+    columnas_orden = [
+        "Usuario",
+        "Tipo",
+        "Cuenta",
+        "Categoría",
+        "Monto",
+        "Nota",
+        "Fecha",
+    ]
+  else:
+    columnas_orden = ["Tipo", "Cuenta", "Categoría", "Monto", "Nota", "Fecha"]
+
   columnas_disponibles = [c for c in columnas_orden if c in df_mostrar.columns]
 
   st.dataframe(
