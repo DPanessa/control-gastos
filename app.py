@@ -121,7 +121,8 @@ if not st.session_state.usuario_actual:
       if user_reg and pass_reg:
         if guardar_usuario(user_reg, pass_reg):
           st.success(
-              "¡Cuenta creada con éxito! Ahora ve a la pestaña 'Iniciar Sesión'."
+              "¡Cuenta creada con éxito! (Si creaste 'admin', tendrás privilegios"
+              " de superusuario). Ve a la pestaña 'Iniciar Sesión'."
           )
         else:
           st.error("El nombre de usuario ya está en uso.")
@@ -192,9 +193,25 @@ def guardar_datos(df):
 
 
 df_global = cargar_datos()
-df_transacciones = df_global[
-    df_global["Usuario"] == st.session_state.usuario_actual
-].copy()
+
+# Es superusuario si el nombre de usuario actual es "admin"
+es_superusuario = st.session_state.usuario_actual.lower() == "admin"
+
+if es_superusuario:
+  st.sidebar.warning("🛡️ Modo Superusuario Activo")
+  ver_modo_global = st.sidebar.checkbox(
+      "Ver datos globales (todos los usuarios)", value=False
+  )
+  if ver_modo_global:
+    df_transacciones = df_global.copy()
+  else:
+    df_transacciones = df_global[
+        df_global["Usuario"] == st.session_state.usuario_actual
+    ].copy()
+else:
+  df_transacciones = df_global[
+      df_global["Usuario"] == st.session_state.usuario_actual
+  ].copy()
 
 # --- PANEL PRINCIPAL DE LA APP ---
 st.title(f"💸 Finanzas de: {st.session_state.usuario_actual}")
@@ -286,7 +303,6 @@ if modo_carga == "📷 Escanear Ticket (IA)":
 
 tipo = st.sidebar.selectbox("Tipo", ["Gasto", "Ingreso"])
 
-# Selector dinámico de tipo de dinero (Físico o Banco/Billetera específica)
 tipo_dinero = st.sidebar.selectbox(
     "Tipo de Dinero", ["Físico (Efectivo)", "Bancario / Digital"]
 )
@@ -365,35 +381,26 @@ if st.sidebar.button("Registrar Movimiento"):
 
 # --- DASHBOARD Y MÉTRICAS ---
 if not df_transacciones.empty:
+  st.subheader("📊 Estado de tus Cuentas y Billeteras")
 
-  def calcular_balance_cuenta(tipo_base):
-    if tipo_base == "Físico (Efectivo)":
-      df_c = df_transacciones[
-          df_transacciones["Cuenta"] == "Físico (Efectivo)"
-      ]
-    else:
-      df_c = df_transacciones[
-          df_transacciones["Cuenta"].str.startswith("Digital:")
-          | (df_transacciones["Cuenta"] == "Bancario (Digital)")
-      ]
+  cuentas_unicas = df_transacciones["Cuenta"].unique()
+  cols = st.columns(len(cuentas_unicas) + 1)
+
+  patrimonio_total = 0
+  for i, cta in enumerate(cuentas_unicas):
+    df_c = df_transacciones[df_transacciones["Cuenta"] == cta]
     ing = df_c[df_c["Tipo"] == "Ingreso"]["Monto"].sum()
     gas = df_c[df_c["Tipo"] == "Gasto"]["Monto"].sum()
-    return ing - gas
+    balance_cta = ing - gas
+    patrimonio_total += balance_cta
 
+    cols[i].metric(label=f"🏦 {cta}", value=f"${balance_cta:,.2f}")
 
-  balance_fisico = calcular_balance_cuenta("Físico (Efectivo)")
-  balance_bancario = calcular_balance_cuenta("Bancario / Digital")
-  balance_total = balance_fisico + balance_bancario
-
-  st.subheader("📊 Estado de tus Cuentas")
-  col1, col2, col3 = st.columns(3)
-  col1.metric("💵 Dinero Físico", f"${balance_fisico:,.2f}")
-  col2.metric("💳 Dinero Digital / Bancario", f"${balance_bancario:,.2f}")
-  col3.metric(
-      "💰 Patrimonio Total",
-      f"${balance_total:,.2f}",
-      delta=f"${balance_total:,.2f}",
-      delta_color="normal" if balance_total >= 0 else "inverse",
+  cols[-1].metric(
+      label="💰 Patrimonio Total",
+      value=f"${patrimonio_total:,.2f}",
+      delta=f"${patrimonio_total:,.2f}",
+      delta_color="normal" if patrimonio_total >= 0 else "inverse",
   )
 
   st.divider()
@@ -418,12 +425,11 @@ if not df_transacciones.empty:
   with col_g2:
     st.subheader("Análisis Financiero")
 
-    # Selector claro y directo para alternar los gráficos
     tipo_grafico = st.radio(
         "Elige qué gráfico mostrar:",
         [
             "📊 Comparación Ingresos / Gastos",
-            "💳 Distribución de Cuentas (Físico vs Digital)",
+            "💳 Distribución por Cuentas",
         ],
         key="selector_grafico_fin",
     )
@@ -444,11 +450,18 @@ if not df_transacciones.empty:
       )
       st.plotly_chart(fig_ing_gas, use_container_width=True)
     else:
+      saldos_cuentas = []
+      for cta in cuentas_unicas:
+        df_c = df_transacciones[df_transacciones["Cuenta"] == cta]
+        saldos_cuentas.append(
+            df_c[df_c["Tipo"] == "Ingreso"]["Monto"].sum()
+            - df_c[df_c["Tipo"] == "Gasto"]["Monto"].sum()
+        )
       fig_cuentas = px.bar(
-          x=["Físico", "Digital / Bancario"],
-          y=[balance_fisico, balance_bancario],
-          color=["Físico", "Digital / Bancario"],
-          labels={"x": "Cuenta", "y": "Monto ($)"},
+          x=list(cuentas_unicas),
+          y=saldos_cuentas,
+          color=list(cuentas_unicas),
+          labels={"x": "Cuenta / Billetera", "y": "Monto ($)"},
       )
       st.plotly_chart(fig_cuentas, use_container_width=True)
 
@@ -456,8 +469,20 @@ if not df_transacciones.empty:
   df_mostrar = df_transacciones.sort_values(by="Fecha", ascending=False).copy()
   df_mostrar["Fecha"] = df_mostrar["Fecha"].dt.strftime("%Y-%m-%d")
 
-  # Reordenar columnas para que la Fecha quede al final
-  columnas_orden = ["Tipo", "Cuenta", "Categoría", "Monto", "Nota", "Fecha"]
+  # Si es superusuario en modo global, mostramos la columna de Usuario para identificar de quién es cada movimiento
+  if es_superusuario and ver_modo_global:
+    columnas_orden = [
+        "Usuario",
+        "Tipo",
+        "Cuenta",
+        "Categoría",
+        "Monto",
+        "Nota",
+        "Fecha",
+    ]
+  else:
+    columnas_orden = ["Tipo", "Cuenta", "Categoría", "Monto", "Nota", "Fecha"]
+
   columnas_disponibles = [c for c in columnas_orden if c in df_mostrar.columns]
 
   st.dataframe(
