@@ -50,9 +50,13 @@ def obtener_cliente_gemini():
 
 # --- FUNCIONES DE USUARIOS Y SESIÓN LOCAL ---
 def cargar_usuarios():
+  if not os.path.exists(USERS_FILE):
+    df_init = pd.DataFrame(columns=["Usuario", "Password"])
+    df_init.to_csv(USERS_FILE, index=False)
+    return df_init
   try:
     return pd.read_csv(USERS_FILE)
-  except FileNotFoundError:
+  except Exception:
     return pd.DataFrame(columns=["Usuario", "Password"])
 
 
@@ -121,8 +125,7 @@ if not st.session_state.usuario_actual:
       if user_reg and pass_reg:
         if guardar_usuario(user_reg, pass_reg):
           st.success(
-              "¡Cuenta creada con éxito! (Si creaste 'admin', tendrás privilegios"
-              " de superusuario). Ve a la pestaña 'Iniciar Sesión'."
+              "¡Cuenta creada con éxito! Ahora ve a la pestaña 'Iniciar Sesión'."
           )
         else:
           st.error("El nombre de usuario ya está en uso.")
@@ -134,9 +137,13 @@ if not st.session_state.usuario_actual:
 
 # --- FUNCIONES DE CATEGORÍAS PERSONALIZADAS ---
 def cargar_categorias_custom():
+  if not os.path.exists(CATEGORIES_FILE):
+    df_init = pd.DataFrame(columns=["Usuario", "Tipo", "Categoria"])
+    df_init.to_csv(CATEGORIES_FILE, index=False)
+    return df_init
   try:
     return pd.read_csv(CATEGORIES_FILE)
-  except FileNotFoundError:
+  except Exception:
     return pd.DataFrame(columns=["Usuario", "Tipo", "Categoria"])
 
 
@@ -174,6 +181,12 @@ def obtener_categorias(usuario, tipo):
 
 # --- FUNCIONES DE TRANSACCIONES ---
 def cargar_datos():
+  if not os.path.exists(DATA_FILE):
+    df_init = pd.DataFrame(
+        columns=["Usuario", "Fecha", "Tipo", "Cuenta", "Categoría", "Monto", "Nota"]
+    )
+    df_init.to_csv(DATA_FILE, index=False)
+    return df_init
   try:
     df = pd.read_csv(DATA_FILE)
     df["Fecha"] = pd.to_datetime(df["Fecha"])
@@ -182,7 +195,7 @@ def cargar_datos():
     if "Cuenta" not in df.columns:
       df["Cuenta"] = "Bancario (Digital)"
     return df
-  except FileNotFoundError:
+  except Exception:
     return pd.DataFrame(
         columns=["Usuario", "Fecha", "Tipo", "Cuenta", "Categoría", "Monto", "Nota"]
     )
@@ -193,25 +206,9 @@ def guardar_datos(df):
 
 
 df_global = cargar_datos()
-
-# Es superusuario si el nombre de usuario actual es "admin"
-es_superusuario = st.session_state.usuario_actual.lower() == "admin"
-
-if es_superusuario:
-  st.sidebar.warning("🛡️ Modo Superusuario Activo")
-  ver_modo_global = st.sidebar.checkbox(
-      "Ver datos globales (todos los usuarios)", value=False
-  )
-  if ver_modo_global:
-    df_transacciones = df_global.copy()
-  else:
-    df_transacciones = df_global[
-        df_global["Usuario"] == st.session_state.usuario_actual
-    ].copy()
-else:
-  df_transacciones = df_global[
-      df_global["Usuario"] == st.session_state.usuario_actual
-  ].copy()
+df_transacciones = df_global[
+    df_global["Usuario"] == st.session_state.usuario_actual
+].copy()
 
 # --- PANEL PRINCIPAL DE LA APP ---
 st.title(f"💸 Finanzas de: {st.session_state.usuario_actual}")
@@ -303,6 +300,7 @@ if modo_carga == "📷 Escanear Ticket (IA)":
 
 tipo = st.sidebar.selectbox("Tipo", ["Gasto", "Ingreso"])
 
+# Selector dinámico de tipo de dinero (Físico o Banco/Billetera específica)
 tipo_dinero = st.sidebar.selectbox(
     "Tipo de Dinero", ["Físico (Efectivo)", "Bancario / Digital"]
 )
@@ -378,6 +376,17 @@ if st.sidebar.button("Registrar Movimiento"):
     st.rerun()
   else:
     st.sidebar.error("El monto debe ser mayor a 0.")
+
+# Botón de respaldo para descargar CSV en la barra lateral
+st.sidebar.divider()
+if not df_global.empty:
+  csv_data = df_global.to_csv(index=False).encode("utf-8")
+  st.sidebar.download_button(
+      label="📥 Descargar Respaldo CSV",
+      data=csv_data,
+      file_name="transacciones_respaldo.csv",
+      mime="text/csv",
+  )
 
 # --- DASHBOARD Y MÉTRICAS ---
 if not df_transacciones.empty:
@@ -469,20 +478,7 @@ if not df_transacciones.empty:
   df_mostrar = df_transacciones.sort_values(by="Fecha", ascending=False).copy()
   df_mostrar["Fecha"] = df_mostrar["Fecha"].dt.strftime("%Y-%m-%d")
 
-  # Si es superusuario en modo global, mostramos la columna de Usuario para identificar de quién es cada movimiento
-  if es_superusuario and ver_modo_global:
-    columnas_orden = [
-        "Usuario",
-        "Tipo",
-        "Cuenta",
-        "Categoría",
-        "Monto",
-        "Nota",
-        "Fecha",
-    ]
-  else:
-    columnas_orden = ["Tipo", "Cuenta", "Categoría", "Monto", "Nota", "Fecha"]
-
+  columnas_orden = ["Tipo", "Cuenta", "Categoría", "Monto", "Nota", "Fecha"]
   columnas_disponibles = [c for c in columnas_orden if c in df_mostrar.columns]
 
   st.dataframe(
