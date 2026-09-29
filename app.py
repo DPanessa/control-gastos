@@ -292,8 +292,70 @@ df_global = cargar_datos()
 es_superusuario = st.session_state.usuario_actual.lower() == "admin"
 ver_modo_global = False
 
+# --- PANEL PRINCIPAL DE LA APP ---
+st.title(f"💸 Finanzas de: {st.session_state.usuario_actual}")
+
+if st.sidebar.button("Cerrar Sesión"):
+  usuario_saliendo = st.session_state.usuario_actual
+  st.session_state.usuario_actual = None
+  borrar_sesion_local(usuario_saliendo)
+  st.rerun()
+
+# SI ES ADMIN, MOSTRAMOS UN SELECTOR DE VISTA ESPECIAL
+vista_actual = "📊 Mi Panel Financiero"
 if es_superusuario:
-  st.sidebar.warning("🛡️ Modo Superusuario Activo")
+  st.sidebar.divider()
+  st.sidebar.warning("🛡️ Panel de Superusuario")
+  vista_actual = st.sidebar.radio(
+      "Seleccionar Vista:",
+      ["📊 Mi Panel Financiero", "📁 Gestor de Archivos CSV (Admin)"],
+  )
+
+# --- VISTA 1: GESTOR DE ARCHIVOS CSV (EXCLUSIVO ADMIN) ---
+if es_superusuario and vista_actual == "📁 Gestor de Archivos CSV (Admin)":
+  st.header("🗂️ Gestor en Tiempo Real de Archivos del Sistema")
+  st.markdown(
+      "Aquí puedes visualizar, editar directamente y descargar todos los"
+      " archivos CSV del servidor de Streamlit sin pasar por la lógica de la"
+      " app."
+  )
+
+  archivo_seleccionado = st.selectbox(
+      "Elige el archivo CSV que deseas revisar:",
+      ["transacciones.csv", "usuarios.csv", "categorias.csv", "login_log.csv"],
+  )
+
+  if os.path.exists(archivo_seleccionado):
+    df_archivo = pd.read_csv(archivo_seleccionado, dtype=str).fillna("")
+
+    st.subheader(f"Contenido actual de: `{archivo_seleccionado}`")
+
+    # Permitir editar el archivo directamente en la tabla interactiva de Streamlit
+    df_editado = st.data_editor(df_archivo, use_container_width=True, num_rows="dynamic")
+
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+      if st.button("💾 Guardar cambios en el archivo"):
+        df_editado.to_csv(archivo_seleccionado, index=False)
+        st.success(f"¡El archivo `{archivo_seleccionado}` fue actualizado con éxito!")
+        time.sleep(1)
+        st.rerun()
+
+    with col_btn2:
+      csv_bytes = df_editado.to_csv(index=False).encode("utf-8")
+      st.download_button(
+          label=f"📥 Descargar `{archivo_seleccionado}`",
+          data=csv_bytes,
+          file_name=archivo_seleccionado,
+          mime="text/csv",
+      )
+  else:
+    st.warning(f"El archivo `{archivo_seleccionado}` aún no ha sido creado.")
+
+  st.stop()  # Detenemos la ejecución para que no cargue el resto de la app de finanzas
+
+# --- VISTA 2: APLICACIÓN DE FINANZAS NORMAL ---
+if es_superusuario:
   ver_modo_global = st.sidebar.checkbox(
       "Ver datos globales (todos los usuarios)", value=False
   )
@@ -308,18 +370,10 @@ else:
       df_global["Usuario"] == st.session_state.usuario_actual
   ].copy()
 
-# --- PANEL PRINCIPAL DE LA APP ---
-st.title(f"💸 Finanzas de: {st.session_state.usuario_actual}")
 st.markdown(
     "Gestiona tu dinero físico y bancario de forma privada y escanea tickets"
     " con IA."
 )
-
-if st.sidebar.button("Cerrar Sesión"):
-  usuario_saliendo = st.session_state.usuario_actual
-  st.session_state.usuario_actual = None
-  borrar_sesion_local(usuario_saliendo)
-  st.rerun()
 
 st.sidebar.divider()
 
@@ -457,7 +511,6 @@ nota = st.sidebar.text_input("Nota / Descripción", value=default_nota)
 
 if st.sidebar.button("Registrar Movimiento"):
   if monto > 0:
-    # Formateamos la fecha seleccionada junto a la hora exacta actual del sistema en texto plano
     hora_actual = datetime.now().strftime("%H:%M:%S")
     fecha_hora_texto = f"{fecha_usuario} {hora_actual}"
 
@@ -496,7 +549,6 @@ if not df_global.empty:
 
 # --- DASHBOARD Y MÉTRICAS ---
 if not df_transacciones.empty:
-  # Convertir temporalmente a numérico para que los cálculos de las métricas y gráficos funcionen perfecto
   df_transacciones["Monto"] = pd.to_numeric(
       df_transacciones["Monto"], errors="coerce"
   ).fillna(0.0)
@@ -627,20 +679,3 @@ else:
       "Aún no tienes transacciones cargadas. Usa el menú lateral para empezar a"
       " registrar tus ingresos y gastos."
   )
-
-# --- PANEL DE LOGS PARA ADMIN ---
-if es_superusuario:
-  st.divider()
-  st.subheader("🕵️‍♂️ Registro de Accesos y Auditoría (Admin)")
-  df_logs = cargar_login_log()
-  if not df_logs.empty:
-    st.dataframe(df_logs, use_container_width=True)
-    csv_logs = df_logs.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        label="📥 Descargar Logs de Conexión",
-        data=csv_logs,
-        file_name="login_log.csv",
-        mime="text/csv",
-    )
-  else:
-    st.info("No hay registros de conexión todavía.")
