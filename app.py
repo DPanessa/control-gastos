@@ -72,7 +72,8 @@ def cargar_login_log():
     df_init.to_csv(LOGIN_LOG_FILE, index=False)
     return df_init
   try:
-    return pd.read_csv(LOGIN_LOG_FILE)
+    # Forzamos dtype=str para evitar conflictos de tipos en Pandas
+    return pd.read_csv(LOGIN_LOG_FILE, dtype=str).fillna("")
   except Exception:
     return pd.DataFrame(columns=["Usuario", "IP", "Conexion", "Desconexion"])
 
@@ -83,20 +84,20 @@ def registrar_login_log(usuario, ip, accion):
   if accion == "Login":
     nuevo = pd.DataFrame(
         {
-            "Usuario": [usuario],
-            "IP": [ip],
-            "Conexion": [ahora],
+            "Usuario": [str(usuario)],
+            "IP": [str(ip)],
+            "Conexion": [str(ahora)],
             "Desconexion": [""],
         }
     )
     df_log = pd.concat([df_log, nuevo], ignore_index=True)
   else:
     idx = df_log[
-        (df_log["Usuario"] == usuario)
-        & (df_log["Desconexion"].isna() | (df_log["Desconexion"] == ""))
+        (df_log["Usuario"] == str(usuario))
+        & ((df_log["Desconexion"].isna()) | (df_log["Desconexion"] == ""))
     ].index
     if not idx.empty:
-      df_log.loc[idx[-1], "Desconexion"] = ahora
+      df_log.loc[idx[-1], "Desconexion"] = str(ahora)
   df_log.to_csv(LOGIN_LOG_FILE, index=False)
 
 
@@ -107,7 +108,7 @@ def cargar_usuarios():
     df_init.to_csv(USERS_FILE, index=False)
     return df_init
   try:
-    return pd.read_csv(USERS_FILE)
+    return pd.read_csv(USERS_FILE, dtype=str).fillna("")
   except Exception:
     return pd.DataFrame(columns=["Usuario", "Password"])
 
@@ -136,7 +137,6 @@ def leer_sesion_local():
   if os.path.exists(SESSION_FILE):
     with open(SESSION_FILE, "r") as f:
       contenido = f.read().strip()
-      # Formato esperado: USUARIO|IP
       if "|" in contenido:
         return contenido.split("|")[0]
       return contenido
@@ -203,7 +203,7 @@ def cargar_categorias_custom():
     df_init.to_csv(CATEGORIES_FILE, index=False)
     return df_init
   try:
-    return pd.read_csv(CATEGORIES_FILE)
+    return pd.read_csv(CATEGORIES_FILE, dtype=str).fillna("")
   except Exception:
     return pd.DataFrame(columns=["Usuario", "Tipo", "Categoria"])
 
@@ -286,7 +286,7 @@ if es_superusuario:
 else:
   df_transacciones = df_global[
       df_global["Usuario"] == st.session_state.usuario_actual
-    ].copy()
+  ].copy()
 
 # --- PANEL PRINCIPAL DE LA APP ---
 st.title(f"💸 Finanzas de: {st.session_state.usuario_actual}")
