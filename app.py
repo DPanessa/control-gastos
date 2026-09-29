@@ -535,17 +535,28 @@ with st.sidebar.expander("➕ Agregar nueva categoría"):
 default_monto = st.session_state.pop("ocr_monto", 0.0)
 default_nota = st.session_state.pop("ocr_nota", "")
 
-# --- GESTIÓN DE ESTADO PARA LIMPIAR EL FORMULARIO CORRECTAMENTE ---
-if "val_monto" not in st.session_state:
-  st.session_state.val_monto = float(default_monto)
-if "val_nota" not in st.session_state:
-  st.session_state.val_nota = str(default_nota)
+# --- GESTIÓN DE VERSIÓN DE WIDGETS PARA LIMPIAR EL FORMULARIO PERFECTAMENTE ---
+if "form_version" not in st.session_state:
+  st.session_state.form_version = 0
 
+# Usamos la versión en la llave (key) del widget para recrearlo limpio al registrar
 monto = st.sidebar.number_input(
-    "Monto ($)", min_value=0.0, step=100.0, value=st.session_state.val_monto, key="input_monto_widget"
+    "Monto ($)",
+    min_value=0.0,
+    step=100.0,
+    value=float(default_monto),
+    key=f"input_monto_v{st.session_state.form_version}",
 )
-fecha_usuario = st.sidebar.date_input("Fecha", datetime.today(), key="input_fecha_widget")
-nota = st.sidebar.text_input("Nota / Descripción", value=st.session_state.val_nota, key="input_nota_widget")
+fecha_usuario = st.sidebar.date_input(
+    "Fecha",
+    datetime.today(),
+    key=f"input_fecha_v{st.session_state.form_version}",
+)
+nota = st.sidebar.text_input(
+    "Nota / Descripción",
+    value=str(default_nota),
+    key=f"input_nota_v{st.session_state.form_version}",
+)
 
 if st.sidebar.button("Registrar Movimiento"):
   if monto > 0:
@@ -570,11 +581,8 @@ if st.sidebar.button("Registrar Movimiento"):
 
     guardar_datos(df_global)
 
-    # Reseteamos los valores de los inputs en st.session_state para limpiar el formulario de inmediato
-    st.session_state.val_monto = 0.0
-    st.session_state.val_nota = ""
-    st.session_state.input_monto_widget = 0.0
-    st.session_state.input_nota_widget = ""
+    # Incrementamos la versión del formulario para vaciar y resetear todos los inputs limpiamente
+    st.session_state.form_version += 1
 
     st.sidebar.success("¡Movimiento guardado con éxito!")
     st.rerun()
