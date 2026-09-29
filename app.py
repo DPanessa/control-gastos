@@ -72,7 +72,6 @@ def cargar_login_log():
     df_init.to_csv(LOGIN_LOG_FILE, index=False)
     return df_init
   try:
-    # Forzamos dtype=str para evitar conflictos de tipos en Pandas
     return pd.read_csv(LOGIN_LOG_FILE, dtype=str).fillna("")
   except Exception:
     return pd.DataFrame(columns=["Usuario", "IP", "Conexion", "Desconexion"])
@@ -81,6 +80,7 @@ def cargar_login_log():
 def registrar_login_log(usuario, ip, accion):
   df_log = cargar_login_log()
   ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  
   if accion == "Login":
     nuevo = pd.DataFrame(
         {
@@ -90,14 +90,19 @@ def registrar_login_log(usuario, ip, accion):
             "Desconexion": [""],
         }
     )
-    df_log = pd.concat([df_log, nuevo], ignore_index=True)
+    if df_log.empty:
+      df_log = nuevo
+    else:
+      df_log = pd.concat([df_log, nuevo], ignore_index=True)
   else:
+    # Buscar el último registro de este usuario que no tenga fecha de desconexión
     idx = df_log[
         (df_log["Usuario"] == str(usuario))
         & ((df_log["Desconexion"].isna()) | (df_log["Desconexion"] == ""))
     ].index
     if not idx.empty:
       df_log.loc[idx[-1], "Desconexion"] = str(ahora)
+      
   df_log.to_csv(LOGIN_LOG_FILE, index=False)
 
 
@@ -117,8 +122,13 @@ def guardar_usuario(usuario, password):
   df_users = cargar_usuarios()
   if not df_users.empty and usuario in df_users["Usuario"].values:
     return False
-  nuevo_u = pd.DataFrame({"Usuario": [usuario], "Password": [password]})
-  df_users = pd.concat([df_users, nuevo_u], ignore_index=True)
+  nuevo_u = pd.DataFrame({"Usuario": [str(usuario)], "Password": [str(password)]})
+  
+  if df_users.empty:
+    df_users = nuevo_u
+  else:
+    df_users = pd.concat([df_users, nuevo_u], ignore_index=True)
+    
   df_users.to_csv(USERS_FILE, index=False)
   return True
 
@@ -128,7 +138,7 @@ def validar_usuario(usuario, password):
   if df_users.empty:
     return False
   match = df_users[
-      (df_users["Usuario"] == usuario) & (df_users["Password"] == password)
+      (df_users["Usuario"] == str(usuario)) & (df_users["Password"] == str(password))
   ]
   return not match.empty
 
@@ -213,18 +223,23 @@ def guardar_categoria_custom(usuario, tipo, categoria):
   existente = False
   if not df_cat.empty:
     existente = not df_cat[
-        (df_cat["Usuario"] == usuario)
-        & (df_cat["Tipo"] == tipo)
-        & (df_cat["Categoria"].str.lower() == categoria.lower())
+        (df_cat["Usuario"] == str(usuario))
+        & (df_cat["Tipo"] == str(tipo))
+        & (df_cat["Categoria"].str.lower() == str(categoria).lower())
     ].empty
 
   if existente:
     return False
 
   nueva = pd.DataFrame(
-      {"Usuario": [usuario], "Tipo": [tipo], "Categoria": [categoria]}
+      {"Usuario": [str(usuario)], "Tipo": [str(tipo)], "Categoria": [str(categoria)]}
   )
-  df_cat = pd.concat([df_cat, nueva], ignore_index=True)
+  
+  if df_cat.empty:
+    df_cat = nueva
+  else:
+    df_cat = pd.concat([df_cat, nueva], ignore_index=True)
+    
   df_cat.to_csv(CATEGORIES_FILE, index=False)
   return True
 
@@ -234,7 +249,7 @@ def obtener_categorias(usuario, tipo):
   df_cat = cargar_categorias_custom()
   if not df_cat.empty:
     customs = df_cat[
-        (df_cat["Usuario"] == usuario) & (df_cat["Tipo"] == tipo)
+        (df_cat["Usuario"] == str(usuario)) & (df_cat["Tipo"] == str(tipo))
     ]["Categoria"].tolist()
     return sorted(list(set(base + customs)))
   return base
@@ -451,7 +466,11 @@ if st.sidebar.button("Registrar Movimiento"):
             "Nota": [nota if nota else "-"],
         }
     )
-    df_global = pd.concat([df_global, nueva_fila], ignore_index=True)
+    if df_global.empty:
+      df_global = nueva_fila
+    else:
+      df_global = pd.concat([df_global, nueva_fila], ignore_index=True)
+      
     guardar_datos(df_global)
     st.sidebar.success("¡Movimiento guardado con éxito!")
     st.rerun()
@@ -593,3 +612,20 @@ else:
       "Aún no tienes transacciones cargadas. Usa el menú lateral para empezar a"
       " registrar tus ingresos y gastos."
   )
+
+# --- PANEL DE LOGS PARA ADMIN ---
+if es_superusuario and ver_modo_global:
+  st.divider()
+  st.subheader("🕵️‍♂️ Registro de Accesos (Auditoría)")
+  df_logs = cargar_login_log()
+  if not df_logs.empty:
+    st.dataframe(df_logs, use_container_width=True)
+    csv_logs = df_logs.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="📥 Descargar Logs",
+        data=csv_logs,
+        file_name="login_log.csv",
+        mime="text/csv",
+    )
+  else:
+    st.info("No hay registros de conexión todavía.")
