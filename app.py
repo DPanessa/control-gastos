@@ -539,7 +539,6 @@ default_nota = st.session_state.pop("ocr_nota", "")
 if "form_version" not in st.session_state:
   st.session_state.form_version = 0
 
-# Usamos la versión en la llave (key) del widget para recrearlo limpio al registrar
 monto = st.sidebar.number_input(
     "Monto ($)",
     min_value=0.0,
@@ -581,7 +580,6 @@ if st.sidebar.button("Registrar Movimiento"):
 
     guardar_datos(df_global)
 
-    # Incrementamos la versión del formulario para vaciar y resetear todos los inputs limpiamente
     st.session_state.form_version += 1
 
     st.sidebar.success("¡Movimiento guardado con éxito!")
@@ -599,6 +597,100 @@ if not df_global.empty:
       file_name="transacciones_respaldo.csv",
       mime="text/csv",
   )
+
+# --- ESTILOS CSS Y ANIMACIÓN ANALÓGICA TIPO CONTADOR ---
+st.markdown(
+    """
+    <style>
+    .tarjetas-grid {
+        display: flex;
+        flex-direction: row;
+        gap: 20px;
+        width: 100%;
+        margin-bottom: 25px;
+    }
+    .tarjeta-caja {
+        background-color: #1e1e1e;
+        border: 1px solid #333333;
+        padding: 20px;
+        border-radius: 12px;
+        flex: 1;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        transition: all 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+    }
+    .tarjeta-titulo {
+        font-size: 14px;
+        color: #95a5a6;
+        font-weight: 500;
+        margin-bottom: 8px;
+    }
+    .tarjeta-valor {
+        font-size: 28px;
+        color: #ffffff;
+        font-weight: bold;
+    }
+    .delta-badge {
+        font-size: 14px;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 6px;
+        display: inline-block;
+        margin-top: 6px;
+    }
+    .delta-verde {
+        background-color: rgba(46, 204, 113, 0.2);
+        color: #2ecc71;
+    }
+    .delta-rojo {
+        background-color: rgba(231, 76, 60, 0.2);
+        color: #e74c3c;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+def renderizar_tarjeta_con_contador(label, valor_num, es_patrimonio=False):
+  valor_fmt = f"${valor_num:,.2f}"
+  uid = f"num_{abs(hash(label))}"
+
+  delta_html = ""
+  if es_patrimonio:
+    if valor_num >= 0:
+      delta_html = f'<div class="delta-badge delta-verde">↑ {valor_fmt}</div>'
+    else:
+      delta_html = f'<div class="delta-badge delta-rojo">↓ {valor_fmt}</div>'
+
+  html_bloque = f"""
+    <div class="tarjeta-caja">
+        <div class="tarjeta-titulo">{label}</div>
+        <div class="tarjeta-valor" id="{uid}">{valor_fmt}</div>
+        {delta_html}
+    </div>
+    <script>
+    (function() {{
+        const el = document.getElementById("{uid}");
+        if (!el) return;
+        const target = {valor_num};
+        let current = target * 0.7; // Punto de inicio para el conteo analógico
+        let steps = 30;
+        let stepVal = (target - current) / steps;
+        let count = 0;
+        const timer = setInterval(() => {{
+            current += stepVal;
+            count++;
+            if (count >= steps) {{
+                current = target;
+                clearInterval(timer);
+            }}
+            el.innerText = "$" + current.toLocaleString('en-US', {{ minimumFractionDigits: 2, maximumFractionDigits: 2 }});
+        }}, 15);
+    }})();
+    </script>
+    """
+  return html_bloque
+
 
 # --- DASHBOARD Y MÉTRICAS ---
 if not df_transacciones.empty:
@@ -625,18 +717,23 @@ if not df_transacciones.empty:
   # Patrimonio Total
   patrimonio_total = saldo_fisico + saldo_digital_total
 
-  # Preparamos las tarjetas ordenadas de mayor a menor saldo
+  # Preparamos las tarjetas de cuentas corrientes (ordenadas de mayor a menor)
   tarjetas_cuentas = []
   tarjetas_cuentas.append({"nombre": "📱 Digital Total", "saldo": float(saldo_digital_total)})
   tarjetas_cuentas.append({"nombre": "💵 Físico (Efectivo)", "saldo": float(saldo_fisico)})
-  tarjetas_cuentas.append({"nombre": "💰 Patrimonio Total", "saldo": float(patrimonio_total)})
 
   tarjetas_cuentas = sorted(tarjetas_cuentas, key=lambda x: x["saldo"], reverse=True)
 
-  # Mostramos usando columnas nativas de Streamlit con formato estricto $ y dos decimales
-  cols = st.columns(len(tarjetas_cuentas))
-  for i, tarj in enumerate(tarjetas_cuentas):
-    cols[i].metric(label=tarj["nombre"], value=f"${tarj['saldo']:,.2f}")
+  # Construimos el contenedor HTML flotante para asegurar que el Patrimonio Total quede siempre a la derecha
+  html_contenedor = '<div class="tarjetas-grid">'
+  for tarj in tarjetas_cuentas:
+    html_contenedor += renderizar_tarjeta_con_contador(tarj["nombre"], tarj["saldo"], es_patrimonio=False)
+  
+  # Agregamos Patrimonio Total fijo al final (a la derecha) con su indicador verde/rojo
+  html_contenedor += renderizar_tarjeta_con_contador("💰 Patrimonio Total", float(patrimonio_total), es_patrimonio=True)
+  html_contenedor += '</div>'
+
+  st.markdown(html_contenedor, unsafe_allow_html=True)
 
   # Desglose opcional de billeteras digitales individuales
   with st.expander("🔍 Ver desglose detallado de Billeteras Digitales"):
@@ -649,7 +746,8 @@ if not df_transacciones.empty:
             df_b[df_b["Tipo"] == "Ingreso"]["Monto"].sum()
             - df_b[df_b["Tipo"] == "Gasto"]["Monto"].sum()
         )
-        cols_bill[j % len(cols_bill)].metric(label=f"🏦 {bill}", value=f"${saldo_b:,.2f}")
+        with cols_bill[j % len(cols_bill)]:
+          st.metric(label=f"🏦 {bill}", value=f"${saldo_b:,.2f}")
     else:
       st.info("No hay billeteras digitales registradas todavía.")
 
@@ -713,7 +811,6 @@ if not df_transacciones.empty:
   st.subheader("Historial de tus Movimientos")
   df_mostrar = df_transacciones.sort_values(by="Fecha", ascending=False).copy()
   
-  # Formatear la columna Monto con signo $ y dos decimales en la tabla de historial
   df_mostrar["Monto"] = df_mostrar["Monto"].apply(lambda x: f"${x:,.2f}")
 
   if es_superusuario and ver_modo_global:
