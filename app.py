@@ -320,10 +320,8 @@ if es_superusuario and vista_actual == "📁 Gestor de Archivos CSV (Admin)":
       " archivos CSV del servidor de Streamlit."
   )
 
-  # BOTÓN GLOBAL PARA DESCARGAR TODOS LOS CSV EN UN ZIP
   archivos_a_zipear = [DATA_FILE, USERS_FILE, CATEGORIES_FILE, LOGIN_LOG_FILE]
-  
-  # Creamos un archivo ZIP en memoria
+
   zip_buffer = io.BytesIO()
   with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
     for archivo in archivos_a_zipear:
@@ -466,11 +464,11 @@ if modo_carga == "📷 Escanear Ticket (IA)":
               )
           else:
             st.sidebar.warning(
-                "⚠️ Los servidores de IA están ocupados temporalmente. Completa"
+                "⚠️ Los servidores de IA estão ocupados temporalmente. Completa"
                 " los datos de forma manual."
             )
 
-tipo = st.sidebar.selectbox("Tipo", ["Gasto", "Ingreso"])
+tipo = st.sidebar.selectbox("Tipo", ["Gasto", "Ingreso"], key="select_tipo")
 
 tipo_dinero = st.sidebar.selectbox(
     "Tipo de Dinero", ["Físico (Efectivo)", "Bancario / Digital"]
@@ -497,10 +495,21 @@ if tipo_dinero == "Bancario / Digital":
 else:
   cuenta = "Físico (Efectivo)"
 
-lista_categorias = obtener_categorias(
-    st.session_state.usuario_actual, tipo
+# --- CONTROL DE CATEGORÍA SELECCIONADA AUTOMÁTICAMENTE ---
+lista_categorias = obtener_categorias(st.session_state.usuario_actual, tipo)
+
+if "categoria_seleccionada_idx" not in st.session_state:
+  st.session_state.categoria_seleccionada_idx = 0
+
+if st.session_state.categoria_seleccionada_idx >= len(lista_categorias):
+  st.session_state.categoria_seleccionada_idx = 0
+
+categoria = st.sidebar.selectbox(
+    "Categoría",
+    lista_categorias,
+    index=st.session_state.categoria_seleccionada_idx,
+    key="select_categoria",
 )
-categoria = st.sidebar.selectbox("Categoría", lista_categorias)
 
 with st.sidebar.expander("➕ Agregar nueva categoría"):
   nueva_cat_input = st.text_input(
@@ -508,11 +517,16 @@ with st.sidebar.expander("➕ Agregar nueva categoría"):
   )
   if st.button("Guardar Categoría"):
     if nueva_cat_input.strip():
+      nombre_nuevo = nueva_cat_input.strip()
       exito = guardar_categoria_custom(
-          st.session_state.usuario_actual, tipo, nueva_cat_input.strip()
+          st.session_state.usuario_actual, tipo, nombre_nuevo
       )
       if exito:
-        st.success(f"¡Categoría '{nueva_cat_input}' agregada!")
+        # Actualizamos la lista y posicionamos el índice automáticamente en la nueva categoría
+        lista_actualizada = obtener_categorias(st.session_state.usuario_actual, tipo)
+        if nombre_nuevo in lista_actualizada:
+          st.session_state.categoria_seleccionada_idx = lista_actualizada.index(nombre_nuevo)
+        st.success(f"¡Categoría '{nombre_nuevo}' agregada y seleccionada!")
         st.rerun()
       else:
         st.warning("Esa categoría ya existe.")
@@ -522,11 +536,17 @@ with st.sidebar.expander("➕ Agregar nueva categoría"):
 default_monto = st.session_state.pop("ocr_monto", 0.0)
 default_nota = st.session_state.pop("ocr_nota", "")
 
+# Usamos Session State para limpiar los campos al registrar
+if "form_monto" not in st.session_state:
+  st.session_state.form_monto = default_monto
+if "form_nota" not in st.session_state:
+  st.session_state.form_nota = default_nota
+
 monto = st.sidebar.number_input(
-    "Monto ($)", min_value=0.0, step=100.0, value=default_monto
+    "Monto ($)", min_value=0.0, step=100.0, value=st.session_state.form_monto, key="input_monto_widget"
 )
-fecha_usuario = st.sidebar.date_input("Fecha", datetime.today())
-nota = st.sidebar.text_input("Nota / Descripción", value=default_nota)
+fecha_usuario = st.sidebar.date_input("Fecha", datetime.today(), key="input_fecha_widget")
+nota = st.sidebar.text_input("Nota / Descripción", value=st.session_state.form_nota, key="input_nota_widget")
 
 if st.sidebar.button("Registrar Movimiento"):
   if monto > 0:
@@ -550,6 +570,11 @@ if st.sidebar.button("Registrar Movimiento"):
       df_global = pd.concat([df_global, nueva_fila], ignore_index=True)
 
     guardar_datos(df_global)
+
+    # Limpiamos los campos del formulario
+    st.session_state.form_monto = 0.0
+    st.session_state.form_nota = ""
+
     st.sidebar.success("¡Movimiento guardado con éxito!")
     st.rerun()
   else:
@@ -565,6 +590,36 @@ if not df_global.empty:
       file_name="transacciones_respaldo.csv",
       mime="text/csv",
   )
+
+# --- ESTILOS CSS Y ANIMACIÓN ANALÓGICA DE NÚMEROS ---
+st.markdown(
+    """
+    <style>
+    @keyframes countUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .metric-analogico {
+      animation: countUp 0.6s ease-out forwards;
+      font-weight: bold;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+def mostrar_metrica_analogica(label, valor_str):
+  st.markdown(
+      f"""
+        <div style="padding: 10px 0;">
+            <span style="font-size: 14px; color: #95a5a6; font-weight: 500;">{label}</span>
+            <div class="metric-analogico" style="font-size: 26px; color: #ffffff; margin-top: 4px;">{valor_str}</div>
+        </div>
+        """,
+      unsafe_allow_html=True,
+  )
+
 
 # --- DASHBOARD Y MÉTRICAS ---
 if not df_transacciones.empty:
@@ -596,20 +651,16 @@ if not df_transacciones.empty:
   tarjetas_cuentas.append({"nombre": "📱 Digital Total", "saldo": saldo_digital_total})
   tarjetas_cuentas.append({"nombre": "💵 Físico (Efectivo)", "saldo": saldo_fisico})
 
-  # Ordenar de mayor a menor saldo
   tarjetas_cuentas = sorted(tarjetas_cuentas, key=lambda x: x["saldo"], reverse=True)
 
-  # Mostramos las tarjetas de cuentas + Patrimonio Total en columnas dinámicas
+  # Mostramos las tarjetas con animación analógica y formato estricto $ y 2 decimales
   cols = st.columns(len(tarjetas_cuentas) + 1)
   for i, tarj in enumerate(tarjetas_cuentas):
-    cols[i].metric(label=tarj["nombre"], value=f"${tarj['saldo']:,.2f}")
+    with cols[i]:
+      mostrar_metrica_analogica(tarj["nombre"], f"${tarj['saldo']:,.2f}")
 
-  cols[-1].metric(
-      label="💰 Patrimonio Total",
-      value=f"${patrimonio_total:,.2f}",
-      delta=f"${patrimonio_total:,.2f}",
-      delta_color="normal" if patrimonio_total >= 0 else "inverse",
-  )
+  with cols[-1]:
+    mostrar_metrica_analogica("💰 Patrimonio Total", f"${patrimonio_total:,.2f}")
 
   # Desglose opcional de billeteras digitales individuales
   with st.expander("🔍 Ver desglose detallado de Billeteras Digitales"):
@@ -622,7 +673,8 @@ if not df_transacciones.empty:
             df_b[df_b["Tipo"] == "Ingreso"]["Monto"].sum()
             - df_b[df_b["Tipo"] == "Gasto"]["Monto"].sum()
         )
-        cols_bill[j % len(cols_bill)].metric(label=f"🏦 {bill}", value=f"${saldo_b:,.2f}")
+        with cols_bill[j % len(cols_bill)]:
+          mostrar_metrica_analogica(f"🏦 {bill}", f"${saldo_b:,.2f}")
     else:
       st.info("No hay billeteras digitales registradas todavía.")
 
@@ -685,6 +737,9 @@ if not df_transacciones.empty:
 
   st.subheader("Historial de tus Movimientos")
   df_mostrar = df_transacciones.sort_values(by="Fecha", ascending=False).copy()
+  
+  # Formatear la columna Monto con signo $ y dos decimales en la tabla de historial
+  df_mostrar["Monto"] = df_mostrar["Monto"].apply(lambda x: f"${x:,.2f}")
 
   if es_superusuario and ver_modo_global:
     columnas_orden = [
