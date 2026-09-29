@@ -270,8 +270,7 @@ def cargar_datos():
     df_init.to_csv(DATA_FILE, index=False)
     return df_init
   try:
-    df = pd.read_csv(DATA_FILE)
-    df["Fecha"] = pd.to_datetime(df["Fecha"])
+    df = pd.read_csv(DATA_FILE, dtype=str).fillna("")
     if "Usuario" not in df.columns:
       df["Usuario"] = "admin"
     if "Cuenta" not in df.columns:
@@ -458,18 +457,19 @@ nota = st.sidebar.text_input("Nota / Descripción", value=default_nota)
 
 if st.sidebar.button("Registrar Movimiento"):
   if monto > 0:
-    hora_actual = datetime.now().time()
-    fecha_hora_combinada = datetime.combine(fecha_usuario, hora_actual)
+    # Formateamos la fecha seleccionada junto a la hora exacta actual del sistema en texto plano
+    hora_actual = datetime.now().strftime("%H:%M:%S")
+    fecha_hora_texto = f"{fecha_usuario} {hora_actual}"
 
     nueva_fila = pd.DataFrame(
         {
-            "Usuario": [st.session_state.usuario_actual],
-            "Fecha": [pd.to_datetime(fecha_hora_combinada)],
-            "Tipo": [tipo],
-            "Cuenta": [cuenta],
-            "Categoría": [categoria],
-            "Monto": [monto],
-            "Nota": [nota if nota else "-"],
+            "Usuario": [str(st.session_state.usuario_actual)],
+            "Fecha": [str(fecha_hora_texto)],
+            "Tipo": [str(tipo)],
+            "Cuenta": [str(cuenta)],
+            "Categoría": [str(categoria)],
+            "Monto": [float(monto)],
+            "Nota": [str(nota if nota else "-")],
         }
     )
     if df_global.empty:
@@ -496,6 +496,11 @@ if not df_global.empty:
 
 # --- DASHBOARD Y MÉTRICAS ---
 if not df_transacciones.empty:
+  # Convertir temporalmente a numérico para que los cálculos de las métricas y gráficos funcionen perfecto
+  df_transacciones["Monto"] = pd.to_numeric(
+      df_transacciones["Monto"], errors="coerce"
+  ).fillna(0.0)
+
   st.subheader("📊 Estado de tus Cuentas y Billeteras")
 
   cuentas_unicas = df_transacciones["Cuenta"].unique()
@@ -582,7 +587,6 @@ if not df_transacciones.empty:
 
   st.subheader("Historial de tus Movimientos")
   df_mostrar = df_transacciones.sort_values(by="Fecha", ascending=False).copy()
-  df_mostrar["Fecha"] = df_mostrar["Fecha"].dt.strftime("%Y-%m-%d %H:%M:%S")
 
   if es_superusuario and ver_modo_global:
     columnas_orden = [
@@ -605,7 +609,6 @@ if not df_transacciones.empty:
   )
 
   if st.button("Borrar mi último registro agregado"):
-    # Recargamos el archivo directamente de disco para asegurar sincronía total
     df_fresco = cargar_datos()
     indices_usuario = df_fresco[
         df_fresco["Usuario"] == st.session_state.usuario_actual
