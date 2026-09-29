@@ -330,7 +330,6 @@ if es_superusuario and vista_actual == "📁 Gestor de Archivos CSV (Admin)":
 
     st.subheader(f"Contenido actual de: `{archivo_seleccionado}`")
 
-    # Permitir editar el archivo directamente en la tabla interactiva de Streamlit
     df_editado = st.data_editor(df_archivo, use_container_width=True, num_rows="dynamic")
 
     col_btn1, col_btn2 = st.columns(2)
@@ -352,7 +351,7 @@ if es_superusuario and vista_actual == "📁 Gestor de Archivos CSV (Admin)":
   else:
     st.warning(f"El archivo `{archivo_seleccionado}` aún no ha sido creado.")
 
-  st.stop()  # Detenemos la ejecución para que no cargue el resto de la app de finanzas
+  st.stop()
 
 # --- VISTA 2: APLICACIÓN DE FINANZAS NORMAL ---
 if es_superusuario:
@@ -555,18 +554,36 @@ if not df_transacciones.empty:
 
   st.subheader("📊 Estado de tus Cuentas y Billeteras")
 
-  cuentas_unicas = df_transacciones["Cuenta"].unique()
-  cols = st.columns(len(cuentas_unicas) + 1)
+  # --- CÁLCULO DE SALDOS POR CUENTA Y DIGITAL TOTAL ---
+  # 1. Saldo Físico (Efectivo)
+  df_fisico = df_transacciones[df_transacciones["Cuenta"] == "Físico (Efectivo)"]
+  saldo_fisico = (
+      df_fisico[df_fisico["Tipo"] == "Ingreso"]["Monto"].sum()
+      - df_fisico[df_fisico["Tipo"] == "Gasto"]["Monto"].sum()
+  )
 
-  patrimonio_total = 0
-  for i, cta in enumerate(cuentas_unicas):
-    df_c = df_transacciones[df_transacciones["Cuenta"] == cta]
-    ing = df_c[df_c["Tipo"] == "Ingreso"]["Monto"].sum()
-    gas = df_c[df_c["Tipo"] == "Gasto"]["Monto"].sum()
-    balance_cta = ing - gas
-    patrimonio_total += balance_cta
+  # 2. Saldo Digital Total y Desglose por Billeteras
+  df_digital = df_transacciones[df_transacciones["Cuenta"].str.startswith("Digital:")]
+  saldo_digital_total = (
+      df_digital[df_digital["Tipo"] == "Ingreso"]["Monto"].sum()
+      - df_digital[df_digital["Tipo"] == "Gasto"]["Monto"].sum()
+  )
 
-    cols[i].metric(label=f"🏦 {cta}", value=f"${balance_cta:,.2f}")
+  # Patrimonio Total
+  patrimonio_total = saldo_fisico + saldo_digital_total
+
+  # Preparamos la lista de tarjetas a mostrar ordenadas de mayor a menor saldo
+  tarjetas_cuentas = []
+  tarjetas_cuentas.append({"nombre": "📱 Digital Total", "saldo": saldo_digital_total})
+  tarjetas_cuentas.append({"nombre": "💵 Físico (Efectivo)", "saldo": saldo_fisico})
+
+  # Ordenar de mayor a menor saldo
+  tarjetas_cuentas = sorted(tarjetas_cuentas, key=lambda x: x["saldo"], reverse=True)
+
+  # Mostramos las tarjetas de cuentas + Patrimonio Total en columnas dinámicas
+  cols = st.columns(len(tarjetas_cuentas) + 1)
+  for i, tarj in enumerate(tarjetas_cuentas):
+    cols[i].metric(label=tarj["nombre"], value=f"${tarj['saldo']:,.2f}")
 
   cols[-1].metric(
       label="💰 Patrimonio Total",
@@ -574,6 +591,21 @@ if not df_transacciones.empty:
       delta=f"${patrimonio_total:,.2f}",
       delta_color="normal" if patrimonio_total >= 0 else "inverse",
   )
+
+  # Desglose opcional de billeteras digitales individuales
+  with st.expander("🔍 Ver desglose detallado de Billeteras Digitales"):
+    billeteras_unicas = df_digital["Cuenta"].unique()
+    if len(billeteras_unicas) > 0:
+      cols_bill = st.columns(min(len(billeteras_unicas), 4))
+      for j, bill in enumerate(billeteras_unicas):
+        df_b = df_digital[df_digital["Cuenta"] == bill]
+        saldo_b = (
+            df_b[df_b["Tipo"] == "Ingreso"]["Monto"].sum()
+            - df_b[df_b["Tipo"] == "Gasto"]["Monto"].sum()
+        )
+        cols_bill[j % len(cols_bill)].metric(label=f"🏦 {bill}", value=f"${saldo_b:,.2f}")
+    else:
+      st.info("No hay billeteras digitales registradas todavía.")
 
   st.divider()
 
@@ -622,18 +654,13 @@ if not df_transacciones.empty:
       )
       st.plotly_chart(fig_ing_gas, use_container_width=True)
     else:
-      saldos_cuentas = []
-      for cta in cuentas_unicas:
-        df_c = df_transacciones[df_transacciones["Cuenta"] == cta]
-        saldos_cuentas.append(
-            df_c[df_c["Tipo"] == "Ingreso"]["Monto"].sum()
-            - df_c[df_c["Tipo"] == "Gasto"]["Monto"].sum()
-        )
+      nombres_cuentas = ["Digital Total", "Físico (Efectivo)"]
+      saldos_cuentas = [saldo_digital_total, saldo_fisico]
       fig_cuentas = px.bar(
-          x=list(cuentas_unicas),
+          x=nombres_cuentas,
           y=saldos_cuentas,
-          color=list(cuentas_unicas),
-          labels={"x": "Cuenta / Billetera", "y": "Monto ($)"},
+          color=nombres_cuentas,
+          labels={"x": "Tipo de Cuenta", "y": "Monto ($)"},
       )
       st.plotly_chart(fig_cuentas, use_container_width=True)
 
