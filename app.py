@@ -570,9 +570,11 @@ if st.sidebar.button("Registrar Movimiento"):
 
     guardar_datos(df_global)
 
-    # Limpiamos las variables de estado para resetear los inputs
+    # Reseteamos los valores de los inputs en st.session_state para limpiar el formulario de inmediato
     st.session_state.val_monto = 0.0
     st.session_state.val_nota = ""
+    st.session_state.input_monto_widget = 0.0
+    st.session_state.input_nota_widget = ""
 
     st.sidebar.success("¡Movimiento guardado con éxito!")
     st.rerun()
@@ -589,76 +591,6 @@ if not df_global.empty:
       file_name="transacciones_respaldo.csv",
       mime="text/csv",
   )
-
-# --- ESTILOS CSS Y ANIMACIÓN ANALÓGICA FLUIDA CON TRANSICIÓN DE ORDEN ---
-st.markdown(
-    """
-    <style>
-    .tarjetas-container {
-        display: flex;
-        flex-direction: row;
-        gap: 20px;
-        width: 100%;
-        margin-bottom: 20px;
-    }
-    .tarjeta-cuenta {
-        background-color: #1e1e1e;
-        border: 1px solid #333333;
-        padding: 20px;
-        border-radius: 10px;
-        flex: 1;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-        transition: all 0.8s cubic-bezier(0.25, 1, 0.5, 1); /* Movimiento ultrasuave al reordenarse */
-    }
-    .titulo-tarjeta {
-        font-size: 14px;
-        color: #95a5a6;
-        font-weight: 500;
-        margin-bottom: 8px;
-    }
-    .valor-tarjeta {
-        font-size: 28px;
-        color: #ffffff;
-        font-weight: bold;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-def mostrar_tarjeta_animada(label, valor_num):
-  # Formato con signo $ y dos decimales exactos
-  valor_formateado = f"${valor_num:,.2f}"
-  id_elemento = f"val_{abs(hash(label))}"
-
-  html_code = f"""
-    <div class="tarjeta-cuenta">
-        <div class="titulo-tarjeta">{label}</div>
-        <div class="valor-tarjeta" id="{id_elemento}">{valor_formateado}</div>
-    </div>
-    <script>
-    (function() {{
-        const el = document.getElementById("{id_elemento}");
-        if (!el) return;
-        const target = {valor_num};
-        let current = target * 0.85; // Efecto analógico de conteo progresivo suave
-        const step = (target - current) / 25;
-        let iteration = 0;
-        const timer = setInterval(() => {{
-            current += step;
-            iteration++;
-            if (iteration >= 25) {{
-                current = target;
-                clearInterval(timer);
-            }}
-            el.innerText = "$" + current.toLocaleString('en-US', {{ minimumFractionDigits: 2, maximumFractionDigits: 2 }});
-        }}, 20);
-    }})();
-    </script>
-    """
-  st.markdown(html_code, unsafe_allow_html=True)
-
 
 # --- DASHBOARD Y MÉTRICAS ---
 if not df_transacciones.empty:
@@ -685,44 +617,18 @@ if not df_transacciones.empty:
   # Patrimonio Total
   patrimonio_total = saldo_fisico + saldo_digital_total
 
-  # Preparamos las tarjetas ordenadas de mayor a menor saldo para que CSS mueva suavemente la posición
+  # Preparamos las tarjetas ordenadas de mayor a menor saldo
   tarjetas_cuentas = []
   tarjetas_cuentas.append({"nombre": "📱 Digital Total", "saldo": float(saldo_digital_total)})
   tarjetas_cuentas.append({"nombre": "💵 Físico (Efectivo)", "saldo": float(saldo_fisico)})
   tarjetas_cuentas.append({"nombre": "💰 Patrimonio Total", "saldo": float(patrimonio_total)})
 
-  # Ordenar de mayor a menor saldo
   tarjetas_cuentas = sorted(tarjetas_cuentas, key=lambda x: x["saldo"], reverse=True)
 
-  # Renderizamos usando flexbox contenedor para animación suave de orden
-  html_flex_container = '<div class="tarjetas-container">'
-  for tarj in tarjetas_cuentas:
-    val_fmt = f"${tarj['saldo']:,.2f}"
-    uid = f"card_{abs(hash(tarj['nombre']))}"
-    html_flex_container += f"""
-        <div class="tarjeta-cuenta">
-            <div class="titulo-tarjeta">{tarj['nombre']}</div>
-            <div class="valor-tarjeta" id="{uid}">{val_fmt}</div>
-        </div>
-        <script>
-        (function() {{
-            const el = document.getElementById("{uid}");
-            if (!el) return;
-            const target = {tarj['saldo']};
-            let current = target * 0.8;
-            const step = (target - current) / 20;
-            let i = 0;
-            const t = setInterval(() => {{
-                current += step;
-                i++;
-                if (i >= 20) {{ current = target; clearInterval(t); }}
-                el.innerText = "$" + current.toLocaleString('en-US', {{ minimumFractionDigits: 2, maximumFractionDigits: 2 }});
-            }}, 15);
-        }})();
-        </script>
-        """
-  html_flex_container += '</div>'
-  st.markdown(html_flex_container, unsafe_allow_html=True)
+  # Mostramos usando columnas nativas de Streamlit con formato estricto $ y dos decimales
+  cols = st.columns(len(tarjetas_cuentas))
+  for i, tarj in enumerate(tarjetas_cuentas):
+    cols[i].metric(label=tarj["nombre"], value=f"${tarj['saldo']:,.2f}")
 
   # Desglose opcional de billeteras digitales individuales
   with st.expander("🔍 Ver desglose detallado de Billeteras Digitales"):
@@ -735,8 +641,7 @@ if not df_transacciones.empty:
             df_b[df_b["Tipo"] == "Ingreso"]["Monto"].sum()
             - df_b[df_b["Tipo"] == "Gasto"]["Monto"].sum()
         )
-        with cols_bill[j % len(cols_bill)]:
-          mostrar_tarjeta_animada(f"🏦 {bill}", float(saldo_b))
+        cols_bill[j % len(cols_bill)].metric(label=f"🏦 {bill}", value=f"${saldo_b:,.2f}")
     else:
       st.info("No hay billeteras digitales registradas todavía.")
 
