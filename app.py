@@ -3,6 +3,7 @@ import io
 import json
 import os
 import time
+import zipfile
 from google import genai
 from google.genai import types
 import pandas as pd
@@ -316,12 +317,31 @@ if es_superusuario and vista_actual == "📁 Gestor de Archivos CSV (Admin)":
   st.header("🗂️ Gestor en Tiempo Real de Archivos del Sistema")
   st.markdown(
       "Aquí puedes visualizar, editar directamente y descargar todos los"
-      " archivos CSV del servidor de Streamlit sin pasar por la lógica de la"
-      " app."
+      " archivos CSV del servidor de Streamlit."
   )
 
+  # BOTÓN GLOBAL PARA DESCARGAR TODOS LOS CSV EN UN ZIP
+  archivos_a_zipear = [DATA_FILE, USERS_FILE, CATEGORIES_FILE, LOGIN_LOG_FILE]
+  
+  # Creamos un archivo ZIP en memoria
+  zip_buffer = io.BytesIO()
+  with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+    for archivo in archivos_a_zipear:
+      if os.path.exists(archivo):
+        zip_file.write(archivo)
+
+  zip_buffer.seek(0)
+  st.download_button(
+      label="📥 Descargar Todos los CSV en un ZIP",
+      data=zip_buffer,
+      file_name=f"respaldo_completo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+      mime="application/zip",
+  )
+
+  st.divider()
+
   archivo_seleccionado = st.selectbox(
-      "Elige el archivo CSV que deseas revisar:",
+      "Elige el archivo CSV individual que deseas revisar:",
       ["transacciones.csv", "usuarios.csv", "categorias.csv", "login_log.csv"],
   )
 
@@ -554,7 +574,6 @@ if not df_transacciones.empty:
 
   st.subheader("📊 Estado de tus Cuentas y Billeteras")
 
-  # --- CÁLCULO DE SALDOS POR CUENTA Y DIGITAL TOTAL ---
   # 1. Saldo Físico (Efectivo)
   df_fisico = df_transacciones[df_transacciones["Cuenta"] == "Físico (Efectivo)"]
   saldo_fisico = (
