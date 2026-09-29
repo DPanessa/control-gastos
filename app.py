@@ -464,7 +464,7 @@ if modo_carga == "📷 Escanear Ticket (IA)":
               )
           else:
             st.sidebar.warning(
-                "⚠️ Los servidores de IA estão ocupados temporalmente. Completa"
+                "⚠️ Los servidores de IA están ocupados temporalmente. Completa"
                 " los datos de forma manual."
             )
 
@@ -522,7 +522,6 @@ with st.sidebar.expander("➕ Agregar nueva categoría"):
           st.session_state.usuario_actual, tipo, nombre_nuevo
       )
       if exito:
-        # Actualizamos la lista y posicionamos el índice automáticamente en la nueva categoría
         lista_actualizada = obtener_categorias(st.session_state.usuario_actual, tipo)
         if nombre_nuevo in lista_actualizada:
           st.session_state.categoria_seleccionada_idx = lista_actualizada.index(nombre_nuevo)
@@ -536,17 +535,17 @@ with st.sidebar.expander("➕ Agregar nueva categoría"):
 default_monto = st.session_state.pop("ocr_monto", 0.0)
 default_nota = st.session_state.pop("ocr_nota", "")
 
-# Usamos Session State para limpiar los campos al registrar
-if "form_monto" not in st.session_state:
-  st.session_state.form_monto = default_monto
-if "form_nota" not in st.session_state:
-  st.session_state.form_nota = default_nota
+# --- GESTIÓN DE ESTADO PARA LIMPIAR EL FORMULARIO CORRECTAMENTE ---
+if "val_monto" not in st.session_state:
+  st.session_state.val_monto = float(default_monto)
+if "val_nota" not in st.session_state:
+  st.session_state.val_nota = str(default_nota)
 
 monto = st.sidebar.number_input(
-    "Monto ($)", min_value=0.0, step=100.0, value=st.session_state.form_monto, key="input_monto_widget"
+    "Monto ($)", min_value=0.0, step=100.0, value=st.session_state.val_monto, key="input_monto_widget"
 )
 fecha_usuario = st.sidebar.date_input("Fecha", datetime.today(), key="input_fecha_widget")
-nota = st.sidebar.text_input("Nota / Descripción", value=st.session_state.form_nota, key="input_nota_widget")
+nota = st.sidebar.text_input("Nota / Descripción", value=st.session_state.val_nota, key="input_nota_widget")
 
 if st.sidebar.button("Registrar Movimiento"):
   if monto > 0:
@@ -571,9 +570,9 @@ if st.sidebar.button("Registrar Movimiento"):
 
     guardar_datos(df_global)
 
-    # Limpiamos los campos del formulario
-    st.session_state.form_monto = 0.0
-    st.session_state.form_nota = ""
+    # Limpiamos las variables de estado para resetear los inputs
+    st.session_state.val_monto = 0.0
+    st.session_state.val_nota = ""
 
     st.sidebar.success("¡Movimiento guardado con éxito!")
     st.rerun()
@@ -591,17 +590,36 @@ if not df_global.empty:
       mime="text/csv",
   )
 
-# --- ESTILOS CSS Y ANIMACIÓN ANALÓGICA DE NÚMEROS ---
+# --- ESTILOS CSS Y ANIMACIÓN ANALÓGICA FLUIDA CON TRANSICIÓN DE ORDEN ---
 st.markdown(
     """
     <style>
-    @keyframes countUp {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
+    .tarjetas-container {
+        display: flex;
+        flex-direction: row;
+        gap: 20px;
+        width: 100%;
+        margin-bottom: 20px;
     }
-    .metric-analogico {
-      animation: countUp 0.6s ease-out forwards;
-      font-weight: bold;
+    .tarjeta-cuenta {
+        background-color: #1e1e1e;
+        border: 1px solid #333333;
+        padding: 20px;
+        border-radius: 10px;
+        flex: 1;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        transition: all 0.8s cubic-bezier(0.25, 1, 0.5, 1); /* Movimiento ultrasuave al reordenarse */
+    }
+    .titulo-tarjeta {
+        font-size: 14px;
+        color: #95a5a6;
+        font-weight: 500;
+        margin-bottom: 8px;
+    }
+    .valor-tarjeta {
+        font-size: 28px;
+        color: #ffffff;
+        font-weight: bold;
     }
     </style>
     """,
@@ -609,16 +627,37 @@ st.markdown(
 )
 
 
-def mostrar_metrica_analogica(label, valor_str):
-  st.markdown(
-      f"""
-        <div style="padding: 10px 0;">
-            <span style="font-size: 14px; color: #95a5a6; font-weight: 500;">{label}</span>
-            <div class="metric-analogico" style="font-size: 26px; color: #ffffff; margin-top: 4px;">{valor_str}</div>
-        </div>
-        """,
-      unsafe_allow_html=True,
-  )
+def mostrar_tarjeta_animada(label, valor_num):
+  # Formato con signo $ y dos decimales exactos
+  valor_formateado = f"${valor_num:,.2f}"
+  id_elemento = f"val_{abs(hash(label))}"
+
+  html_code = f"""
+    <div class="tarjeta-cuenta">
+        <div class="titulo-tarjeta">{label}</div>
+        <div class="valor-tarjeta" id="{id_elemento}">{valor_formateado}</div>
+    </div>
+    <script>
+    (function() {{
+        const el = document.getElementById("{id_elemento}");
+        if (!el) return;
+        const target = {valor_num};
+        let current = target * 0.85; // Efecto analógico de conteo progresivo suave
+        const step = (target - current) / 25;
+        let iteration = 0;
+        const timer = setInterval(() => {{
+            current += step;
+            iteration++;
+            if (iteration >= 25) {{
+                current = target;
+                clearInterval(timer);
+            }}
+            el.innerText = "$" + current.toLocaleString('en-US', {{ minimumFractionDigits: 2, maximumFractionDigits: 2 }});
+        }}, 20);
+    }})();
+    </script>
+    """
+  st.markdown(html_code, unsafe_allow_html=True)
 
 
 # --- DASHBOARD Y MÉTRICAS ---
@@ -646,21 +685,44 @@ if not df_transacciones.empty:
   # Patrimonio Total
   patrimonio_total = saldo_fisico + saldo_digital_total
 
-  # Preparamos la lista de tarjetas a mostrar ordenadas de mayor a menor saldo
+  # Preparamos las tarjetas ordenadas de mayor a menor saldo para que CSS mueva suavemente la posición
   tarjetas_cuentas = []
-  tarjetas_cuentas.append({"nombre": "📱 Digital Total", "saldo": saldo_digital_total})
-  tarjetas_cuentas.append({"nombre": "💵 Físico (Efectivo)", "saldo": saldo_fisico})
+  tarjetas_cuentas.append({"nombre": "📱 Digital Total", "saldo": float(saldo_digital_total)})
+  tarjetas_cuentas.append({"nombre": "💵 Físico (Efectivo)", "saldo": float(saldo_fisico)})
+  tarjetas_cuentas.append({"nombre": "💰 Patrimonio Total", "saldo": float(patrimonio_total)})
 
+  # Ordenar de mayor a menor saldo
   tarjetas_cuentas = sorted(tarjetas_cuentas, key=lambda x: x["saldo"], reverse=True)
 
-  # Mostramos las tarjetas con animación analógica y formato estricto $ y 2 decimales
-  cols = st.columns(len(tarjetas_cuentas) + 1)
-  for i, tarj in enumerate(tarjetas_cuentas):
-    with cols[i]:
-      mostrar_metrica_analogica(tarj["nombre"], f"${tarj['saldo']:,.2f}")
-
-  with cols[-1]:
-    mostrar_metrica_analogica("💰 Patrimonio Total", f"${patrimonio_total:,.2f}")
+  # Renderizamos usando flexbox contenedor para animación suave de orden
+  html_flex_container = '<div class="tarjetas-container">'
+  for tarj in tarjetas_cuentas:
+    val_fmt = f"${tarj['saldo']:,.2f}"
+    uid = f"card_{abs(hash(tarj['nombre']))}"
+    html_flex_container += f"""
+        <div class="tarjeta-cuenta">
+            <div class="titulo-tarjeta">{tarj['nombre']}</div>
+            <div class="valor-tarjeta" id="{uid}">{val_fmt}</div>
+        </div>
+        <script>
+        (function() {{
+            const el = document.getElementById("{uid}");
+            if (!el) return;
+            const target = {tarj['saldo']};
+            let current = target * 0.8;
+            const step = (target - current) / 20;
+            let i = 0;
+            const t = setInterval(() => {{
+                current += step;
+                i++;
+                if (i >= 20) {{ current = target; clearInterval(t); }}
+                el.innerText = "$" + current.toLocaleString('en-US', {{ minimumFractionDigits: 2, maximumFractionDigits: 2 }});
+            }}, 15);
+        }})();
+        </script>
+        """
+  html_flex_container += '</div>'
+  st.markdown(html_flex_container, unsafe_allow_html=True)
 
   # Desglose opcional de billeteras digitales individuales
   with st.expander("🔍 Ver desglose detallado de Billeteras Digitales"):
@@ -674,7 +736,7 @@ if not df_transacciones.empty:
             - df_b[df_b["Tipo"] == "Gasto"]["Monto"].sum()
         )
         with cols_bill[j % len(cols_bill)]:
-          mostrar_metrica_analogica(f"🏦 {bill}", f"${saldo_b:,.2f}")
+          mostrar_tarjeta_animada(f"🏦 {bill}", float(saldo_b))
     else:
       st.info("No hay billeteras digitales registradas todavía.")
 
